@@ -74,41 +74,62 @@ export class FFmpegRenderer {
       throw new Error('Project has no scenes to render.');
     }
 
+    const { resolveStoredMediaPath } = await import('@/lib/storage/project-storage');
+
+    // 1. Filter Timeline to Ready Assets Only
+    const readyScenes = scenes.filter(scene => {
+      const activeVideo = scene.assetVersions.find(a => a.assetType === 'LIPSYNC') 
+                       || scene.assetVersions.find(a => a.assetType === 'VIDEO');
+      if (!activeVideo) return false;
+      const absVideoPath = resolveStoredMediaPath(projectId, activeVideo.filePath);
+      return fs.existsSync(absVideoPath);
+    });
+
+    if (readyScenes.length === 0) {
+      throw new Error('No ready scenes with video assets found to render.');
+    }
+
     const videoInputs: Array<{ path: string; duration: number }> = [];
     const audioInputs: string[] = [];
+    const speechSegments: Array<{startSeconds: number; endSeconds: number}> = [];
+
+    let currentTimelineSeconds = 0;
 
     // Identify active video and audio for each scene
-    for (const scene of scenes) {
+    for (const scene of readyScenes) {
       const activeVideo = scene.assetVersions.find(a => a.assetType === 'LIPSYNC') 
                        || scene.assetVersions.find(a => a.assetType === 'VIDEO');
       
       const activeAudio = scene.assetVersions.find(a => a.assetType === 'DIALOGUE')
                        || scene.assetVersions.find(a => a.assetType === 'NARRATION');
       
-      if (!activeVideo) {
-        throw new Error(`Scene #${scene.sceneNumber} is missing an active video asset.`);
-      }
-      
-      const absVideoPath = path.join(process.cwd(), 'data', activeVideo.filePath);
-      if (!fs.existsSync(absVideoPath)) {
-        throw new Error(`Video file missing for Scene #${scene.sceneNumber}: ${absVideoPath}`);
-      }
+      const absVideoPath = resolveStoredMediaPath(projectId, activeVideo!.filePath);
+      const videoDuration = activeVideo!.duration || scene.durationSeconds || 5.0;
       
       videoInputs.push({ 
         path: absVideoPath, 
-        duration: activeVideo.duration || scene.durationSeconds || 5.0 
+        duration: videoDuration 
       });
 
       if (activeAudio) {
-        const absAudioPath = path.join(process.cwd(), 'data', activeAudio.filePath);
+        const absAudioPath = resolveStoredMediaPath(projectId, activeAudio.filePath);
         if (fs.existsSync(absAudioPath)) {
           audioInputs.push(absAudioPath);
+          const audioDuration = activeAudio.duration || (scene.narrationHindi ? videoDuration * 0.8 : 0);
+          if (audioDuration > 0) {
+            speechSegments.push({
+              startSeconds: currentTimelineSeconds,
+              endSeconds: currentTimelineSeconds + audioDuration
+            });
+          }
         } else {
           audioInputs.push('SILENCE');
         }
       } else {
         audioInputs.push('SILENCE');
       }
+
+      currentTimelineSeconds += videoDuration;
     }
 
     // 2. Prepare Output Directory
@@ -123,7 +144,7 @@ export class FFmpegRenderer {
     // 3. Prepare Subtitles
     let subtitleFilter = '';
     if (burnSubtitles) {
-      const cues = SubtitleGenerator.buildCuesFromScenes(scenes);
+      const cues = SubtitleGenerator.buildCuesFromScenes(readyScenes);
       if (cues.length > 0) {
         const { srtPath } = SubtitleGenerator.saveProjectSubtitles(projectId, cues);
         const escapedPath = this.escapeSubtitlePath(srtPath);
@@ -138,7 +159,6 @@ export class FFmpegRenderer {
     let duckingFilter = '';
     
     if (hasMusic) {
-      const speechSegments = await SoundDesignService.getProjectSpeechSegments(projectId);
       duckingFilter = AudioDuckingEngine.buildDuckingFilterExpression(speechSegments);
     }
 
