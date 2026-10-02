@@ -404,66 +404,79 @@ export function VoiceAudioStudio({ projectId, project, onRefresh }: VoiceAudioSt
         </p>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {project?.characters?.map((char: any) => {
-            const currentCasting = characterVoices[char.id] || {
-              provider: char.voiceProvider || 'SARVAM',
-              voiceId: char.voiceId || 'shubh',
-            };
-            const isSaving = savingCharVoice === char.id;
+          {(() => {
+            const speakingCharacterIds = new Set(project?.scenes?.map((s: any) => s.speakingCharacterId).filter(Boolean));
+            const speakingCharacters = project?.characters?.filter((c: any) => speakingCharacterIds.has(c.id)) || [];
 
-            return (
-              <div
-                key={char.id}
-                className="p-4 rounded-xl border border-slate-800 bg-slate-950 flex flex-col justify-between space-y-3"
-              >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">
-                      {char.role}
-                    </span>
-                    <h4 className="text-sm font-bold text-white mt-1">{char.name}</h4>
+            if (speakingCharacters.length === 0) {
+              return (
+                <div className="col-span-1 md:col-span-2 p-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-200 text-xs">
+                  Solo Storyteller mode is active, or no characters have dialogue lines in the current scenes. All story text will be handled by the Scene Narration Generator below.
+                </div>
+              );
+            }
+
+            return speakingCharacters.map((char: any) => {
+              const currentCasting = characterVoices[char.id] || {
+                provider: char.voiceProvider || 'SARVAM',
+                voiceId: char.voiceId || 'shubh',
+              };
+              const isSaving = savingCharVoice === char.id;
+
+              return (
+                <div
+                  key={char.id}
+                  className="p-4 rounded-xl border border-slate-800 bg-slate-950 flex flex-col justify-between space-y-3"
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">
+                        {char.role}
+                      </span>
+                      <h4 className="text-sm font-bold text-white mt-1">{char.name}</h4>
+                    </div>
+                    {char.voiceId && (
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                        Casted: {char.voiceId}
+                      </span>
+                    )}
                   </div>
-                  {char.voiceId && (
-                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                      Casted: {char.voiceId}
-                    </span>
-                  )}
-                </div>
 
-                <div className="flex items-center gap-2">
-                  <select
-                    value={currentCasting.voiceId}
-                    onChange={(e) => {
-                      const vId = e.target.value;
-                      const v = voices.find((item) => item.id === vId);
-                      setCharacterVoices((prev) => ({
-                        ...prev,
-                        [char.id]: {
-                          provider: v?.provider || 'SARVAM',
-                          voiceId: vId,
-                        },
-                      }));
-                    }}
-                    className="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
-                  >
-                    {voices.map((v) => (
-                      <option key={v.id} value={v.id}>
-                        {v.name} ({v.gender}) — {v.provider}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={currentCasting.voiceId}
+                      onChange={(e) => {
+                        const vId = e.target.value;
+                        const v = voices.find((item) => item.id === vId);
+                        setCharacterVoices((prev) => ({
+                          ...prev,
+                          [char.id]: {
+                            provider: v?.provider || 'SARVAM',
+                            voiceId: vId,
+                          },
+                        }));
+                      }}
+                      className="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
+                    >
+                      {voices.map((v) => (
+                        <option key={v.id} value={v.id}>
+                          {v.name} ({v.gender}) — {v.provider}
+                        </option>
+                      ))}
+                    </select>
 
-                  <button
-                    onClick={() => handleAssignVoice(char.id)}
-                    disabled={isSaving}
-                    className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-colors disabled:opacity-50"
-                  >
-                    {isSaving ? 'Saving...' : 'Lock Voice'}
-                  </button>
+                    <button
+                      onClick={() => handleAssignVoice(char.id)}
+                      disabled={isSaving}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-colors disabled:opacity-50"
+                    >
+                      {isSaving ? 'Saving...' : 'Lock Voice'}
+                    </button>
+                  </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            });
+          })()}
         </div>
       </div>
 

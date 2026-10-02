@@ -49,6 +49,19 @@ export async function DELETE(req: NextRequest, props: { params: Promise<{ id: st
     await prisma.project.delete({
       where: { id: params.id },
     });
+    
+    // Also cleanup files on disk
+    try {
+      const { getProjectDir } = await import('@/lib/storage/project-storage');
+      const fs = await import('fs');
+      const dir = getProjectDir(params.id);
+      if (fs.existsSync(dir)) {
+        await fs.promises.rm(dir, { recursive: true, force: true });
+      }
+    } catch (fsError) {
+      console.error('Failed to delete project directory:', fsError);
+    }
+    
     return NextResponse.json({ success: true, message: 'Project deleted' });
   } catch (error: any) {
     return NextResponse.json(

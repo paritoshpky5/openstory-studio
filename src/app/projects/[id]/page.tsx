@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   Film,
@@ -31,6 +31,7 @@ import {
   Download,
   Archive,
   FolderArchive,
+  Trash2,
 } from 'lucide-react';
 import { formatDuration, formatCurrency } from '@/lib/utils';
 
@@ -42,6 +43,7 @@ import { RenderStudio } from '@/components/studio/render-studio';
 
 export default function ProjectStudioPage() {
   const params = useParams();
+  const router = useRouter();
   const projectId = params?.id as string;
 
   const [project, setProject] = useState<any>(null);
@@ -52,6 +54,20 @@ export default function ProjectStudioPage() {
   const [uploadingCharId, setUploadingCharId] = useState<string | null>(null);
   const [copiedCharId, setCopiedCharId] = useState<string | null>(null);
   const [isExportingZip, setIsExportingZip] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleDeleteProject = async () => {
+    if (!confirm('Are you sure you want to completely delete this project? All images, videos, and generated audio files will be permanently destroyed.')) return;
+    try {
+      setIsDeleting(true);
+      const res = await fetch(`/api/projects/${projectId}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Failed to delete project');
+      router.push('/');
+    } catch (err: any) {
+      alert(err.message || 'Error deleting project');
+      setIsDeleting(false);
+    }
+  };
 
   const handleExportZip = async () => {
     try {
@@ -295,6 +311,22 @@ export default function ProjectStudioPage() {
                 <>
                   <Archive className="w-3.5 h-3.5 text-amber-400" />
                   Export Project (.zip)
+                </>
+              )}
+            </button>
+
+            <button
+              onClick={handleDeleteProject}
+              disabled={isDeleting}
+              title="Permanently delete this project"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500/20 transition-all disabled:opacity-50"
+            >
+              {isDeleting ? (
+                <RefreshCw className="w-3.5 h-3.5 animate-spin text-red-400" />
+              ) : (
+                <>
+                  <Trash2 className="w-3.5 h-3.5 text-red-400" />
+                  Delete Project
                 </>
               )}
             </button>
