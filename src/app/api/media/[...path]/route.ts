@@ -33,10 +33,26 @@ export async function GET(request: NextRequest, props: { params: Promise<{ path:
     }
 
     const dataRootDir = getDataRootDir();
-    const filePath = path.join(dataRootDir, ...requestedSegments);
+    let filePath = path.join(dataRootDir, ...requestedSegments);
+    let normalizedTarget = path.normalize(filePath);
+
+    // If the file doesn't exist at root (e.g. data/images/foo.png) and it's missing the "projects" prefix,
+    // this is a legacy/project-relative path. We dynamically locate which project it belongs to.
+    if (!fs.existsSync(normalizedTarget) && requestedSegments[0] !== 'projects') {
+      const projectsDir = path.join(dataRootDir, 'projects');
+      if (fs.existsSync(projectsDir)) {
+        const projectDirs = fs.readdirSync(projectsDir);
+        for (const pid of projectDirs) {
+          const possiblePath = path.join(projectsDir, pid, ...requestedSegments);
+          if (fs.existsSync(possiblePath)) {
+            normalizedTarget = path.normalize(possiblePath);
+            break;
+          }
+        }
+      }
+    }
 
     // Verify file stays within dataRootDir
-    const normalizedTarget = path.normalize(filePath);
     if (!normalizedTarget.startsWith(path.normalize(dataRootDir))) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }

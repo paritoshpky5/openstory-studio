@@ -105,7 +105,7 @@ export async function saveProjectMediaFile(
   ensureProjectStorage(projectId);
 
   const filename = generateMediaFilename(baseName, extension);
-  const relativePath = path.posix.join(subdir, filename);
+  const relativePath = path.posix.join('projects', projectId, subdir, filename);
   const absolutePath = path.join(getProjectDir(projectId), subdir, filename);
 
   if (fs.existsSync(absolutePath)) {
