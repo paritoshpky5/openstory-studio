@@ -57,6 +57,7 @@ CRITICAL FILMMAKING & CONSISTENCY RULES:
 2. CHARACTER CONSISTENCY IS SUPREME:
    - For every major recurring character, create a rigorous "CharacterIdentityPackage".
    - Specify age, exact facial traits, warm Indian skin tone, eyes, hair texture, body proportions, and PRECISE clothing details (colors, textiles, patterns, accessories).
+   - The "clothingDescription" field is strictly REQUIRED. Do NOT omit it.
    - Character reference assets will include PRIMARY_FACE and PRIMARY_FULL_BODY for consistency.
    - Character clothes and features must remain strictly consistent across scenes.
 3. VISUAL STYLE:
@@ -65,10 +66,17 @@ CRITICAL FILMMAKING & CONSISTENCY RULES:
    - Natural subsurface scattering on skin, controlled depth of field.
    - Do NOT use copyrighted franchise/studio names (e.g. do not say "Pixar" or "Disney"). Use technical artistic descriptors.
 ${voiceRuleSection}
-5. CINEMATOGRAPHY:
-   - Controlled camera motion: "Locked Camera", "Slow Dolly In", "Slow Dolly Out", "Pan Left", "Pan Right", "Tilt Up", "Tilt Down", "Arc Left", "Arc Right", "Tracking Forward", "Tracking Backward", "Subtle Handheld".
-   - Motion presets: "STATIC_PLUS", "VERY_SUBTLE", "NATURAL", "MODERATE", "DYNAMIC".
-   - Scene importance: "BACKGROUND", "NORMAL", "IMPORTANT", "HERO".
+5. CINEMATOGRAPHY ENUMS (STRICTLY ENFORCED):
+   - "shotType" MUST BE EXACTLY ONE OF: "WIDE", "MEDIUM", "CLOSE_UP", "EXTREME_CLOSE_UP", "OVER_THE_SHOULDER", "ESTABLISHING" (Do NOT use "FULL", "MEDIUM_WIDE", etc.).
+   - "cameraAngle" MUST BE EXACTLY ONE OF: "EYE_LEVEL", "LOW_ANGLE", "HIGH_ANGLE", "DUTCH_ANGLE" (Do NOT use "OVER_SHOULDER" here).
+   - "cameraMovement" MUST BE ONE OF: "Locked Camera", "Slow Dolly In", "Slow Dolly Out", "Pan Left", "Pan Right", "Tilt Up", "Tilt Down", "Arc Left", "Arc Right", "Tracking Forward", "Tracking Backward", "Subtle Handheld", "Rack Focus".
+   - "motionPreset": "STATIC_PLUS", "VERY_SUBTLE", "NATURAL", "MODERATE", "DYNAMIC".
+   - "importance": "BACKGROUND", "NORMAL", "IMPORTANT", "HERO".
+6. JSON SYNTAX (CRITICAL):
+   - Output must be 100% valid JSON.
+   - Escape all double quotes inside strings using \\" (e.g., \\"Hello\\").
+   - Do NOT use actual newlines in strings; use \\n if necessary.
+   - Do NOT trail commas after the last item in an array or object.
 
 OUTPUT FORMAT:
 Return ONLY valid JSON matching this exact structure with no markdown code blocks around it or inside standard triple-backtick json:
