@@ -58,7 +58,8 @@ CRITICAL FILMMAKING & CONSISTENCY RULES:
    - For every major recurring character, create a rigorous "CharacterIdentityPackage".
    - Specify age, exact facial traits, warm Indian skin tone, eyes, hair texture, body proportions, and PRECISE clothing details (colors, textiles, patterns, accessories).
    - The "clothingDescription" field is strictly REQUIRED. Do NOT omit it.
-   - Character reference assets will include PRIMARY_FACE and PRIMARY_FULL_BODY for consistency.
+   - The "role" field MUST BE EXACTLY ONE OF: "PROTAGONIST", "ANTAGONIST", "SUPPORTING", "EXTRA" (Do NOT use "MENTOR", etc).
+   - Set "referenceAssets" to an empty array: []
    - Character clothes and features must remain strictly consistent across scenes.
 3. VISUAL STYLE:
    - Polished cinematic stylized 3D animated film aesthetic.
