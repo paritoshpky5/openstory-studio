@@ -50,7 +50,22 @@ const MOTION_PRESETS = [
 ];
 
 export function VideoAnimationStudio({ projectId, project, onRefresh }: VideoAnimationStudioProps) {
-  const [selectedSceneId, setSelectedSceneId] = useState<string>(project?.scenes?.[0]?.id || '');
+  const [selectedSceneId, setSelectedSceneId] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = sessionStorage.getItem(`active_scene_${projectId}_video`);
+      if (saved && project.scenes?.some((s: any) => s.id === saved)) {
+        return saved;
+      }
+    }
+    return project.scenes?.[0]?.id || '';
+  });
+
+  useEffect(() => {
+    if (selectedSceneId) {
+      sessionStorage.setItem(`active_scene_${projectId}_video`, selectedSceneId);
+    }
+  }, [selectedSceneId, projectId]);
+
   const [selectedModel, setSelectedModel] = useState<string>('kling-v1');
   const [motionPrompt, setMotionPrompt] = useState<string>('');
   const [cameraMove, setCameraMove] = useState<string>('SLOW_DOLLY_IN');
@@ -64,6 +79,64 @@ export function VideoAnimationStudio({ projectId, project, onRefresh }: VideoAni
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [uploadingVideo, setUploadingVideo] = useState(false);
   const [copiedMotionPrompt, setCopiedMotionPrompt] = useState(false);
+  const [isGeneratingAll, setIsGeneratingAll] = useState(false);
+
+  const handleGenerateAllMissing = async () => {
+    if (!confirm('Are you sure you want to generate videos for ALL scenes missing an active video? This will consume significant API credits.')) return;
+    setIsGeneratingAll(true);
+    let generatedCount = 0;
+    try {
+      for (const scene of project.scenes || []) {
+        const hasActiveVideo = scene.assetVersions?.some((a: any) => a.assetType === 'VIDEO' && a.isActive);
+        if (hasActiveVideo) continue;
+
+        // Find approved image for reference
+        const approvedImage = scene.assetVersions?.find((a: any) => a.assetType === 'PRODUCTION_IMAGE' && a.approvalStatus === 'APPROVED' && a.isActive);
+        if (!approvedImage) continue; // Skip if no approved image
+
+        const modelMeta = AVAILABLE_VIDEO_MODELS.find((m) => m.id === selectedModel);
+        const res = await fetch(`/api/projects/${projectId}/video/generate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sceneId: scene.id,
+            imageAssetId: approvedImage.id,
+            provider: modelMeta?.provider || 'KLING',
+            modelId: selectedModel,
+            motionPrompt: scene.summary || undefined,
+            cameraMovement: scene.cameraMovement || 'SLOW_DOLLY_IN',
+            motionPreset: scene.motionPreset || 'NATURAL',
+            durationSeconds: 5,
+            forceRegeneration: false,
+          }),
+        });
+
+        if (!res.ok) {
+          const errText = await res.text();
+          let errMsg = errText;
+          try {
+            const errJson = JSON.parse(errText);
+            errMsg = errJson.error || errText;
+          } catch {}
+          throw new Error(`Scene #${scene.sceneNumber} failed: ${errMsg}`);
+        }
+
+        const data = await res.json();
+        if (data.success) generatedCount++;
+      }
+
+      if (generatedCount > 0) {
+        alert(`Successfully submitted ${generatedCount} missing videos to the queue!`);
+        onRefresh?.();
+      } else {
+        alert('All scenes already have active videos or are missing approved reference images.');
+      }
+    } catch (err: any) {
+      alert(`Batch generation error: ${err.message}`);
+    } finally {
+      setIsGeneratingAll(false);
+    }
+  };
 
   const selectedScene = project?.scenes?.find((s: any) => s.id === selectedSceneId);
 
@@ -94,7 +167,7 @@ export function VideoAnimationStudio({ projectId, project, onRefresh }: VideoAni
 
       const data = await res.json();
       if (data.success) {
-        if (onRefresh) onRefresh();
+        if (onRefresh) onRefresh?.();
       } else {
         alert(data.error || 'Video upload failed');
       }
@@ -145,7 +218,7 @@ export function VideoAnimationStudio({ projectId, project, onRefresh }: VideoAni
 
       setActiveJobs(updated);
       if (hasChanges && onRefresh) {
-        onRefresh();
+        onRefresh?.();
       }
     }, 4000);
 
@@ -183,7 +256,7 @@ export function VideoAnimationStudio({ projectId, project, onRefresh }: VideoAni
       const data = await res.json();
       if (data.success && data.job) {
         setActiveJobs((prev) => ({ ...prev, [data.job.id]: data.job }));
-        if (onRefresh) onRefresh();
+        if (onRefresh) onRefresh?.();
       } else {
         alert(data.error || 'Failed to submit video generation');
       }
@@ -205,7 +278,7 @@ export function VideoAnimationStudio({ projectId, project, onRefresh }: VideoAni
       });
       const data = await res.json();
       if (data.success) {
-        if (onRefresh) onRefresh();
+        if (onRefresh) onRefresh?.();
       } else {
         alert(data.error || 'Approval failed');
       }
@@ -229,7 +302,16 @@ export function VideoAnimationStudio({ projectId, project, onRefresh }: VideoAni
             Turn approved production frames into cinematic 3-8 second video shots using Kling & Seedance.
           </p>
         </div>
+        <button
+          onClick={handleGenerateAllMissing}
+          disabled={isGeneratingAll}
+          className="text-xs font-bold bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 px-3 py-2 rounded-lg transition-colors disabled:opacity-50 whitespace-nowrap"
+        >
+          {isGeneratingAll ? 'Submitting to Queue...' : 'Gen All Missing Videos'}
+        </button>
+      </div>
 
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         {/* Scene Selector Pill Strip */}
         <div className="flex items-center gap-1.5 overflow-x-auto pb-2 sm:pb-0 max-w-xl">
           {project?.scenes?.map((scene: any) => {

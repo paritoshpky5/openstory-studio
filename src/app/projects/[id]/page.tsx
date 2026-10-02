@@ -334,30 +334,36 @@ export default function ProjectStudioPage() {
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex border-t border-slate-800 pt-3 gap-2 overflow-x-auto">
+        <div className="flex border-t border-slate-800 pt-3 gap-2 overflow-x-auto pb-1">
           {[
-            { id: 'overview', label: 'Overview', icon: Layers },
-            { id: 'characters', label: `Character Bible (${project.characters?.length || 0})`, icon: Users },
-            { id: 'style', label: 'Style Bible', icon: Palette },
-            { id: 'scenes', label: `Scenes & Shots (${project.scenes?.length || 0})`, icon: Clapperboard },
-            { id: 'storyboards', label: 'Image Studio & Takes', icon: ImageIcon },
-            { id: 'video', label: 'Image → Video Studio', icon: VideoIcon },
-            { id: 'voice', label: 'Hindi Voice Lab', icon: Volume2 },
-            { id: 'timeline', label: 'Timeline & Audio', icon: Film },
+            { id: 'overview', label: 'Overview', icon: Layers, isActionable: false },
+            { id: 'style', label: 'Style Bible', icon: Palette, isActionable: false },
+            { id: 'scenes', label: `Scenes (${project.scenes?.length || 0})`, icon: Clapperboard, isActionable: false },
+            { id: 'characters', label: `Character Bible (${project.characters?.length || 0})`, icon: Users, isActionable: true },
+            { id: 'storyboards', label: 'Image Studio', icon: ImageIcon, isActionable: true },
+            { id: 'video', label: 'Video Studio', icon: VideoIcon, isActionable: true },
+            { id: 'voice', label: 'Audio Lab', icon: Volume2, isActionable: true },
+            { id: 'timeline', label: 'Timeline / Export', icon: Film, isActionable: true },
           ].map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
+
+            // Highlight actionable tabs differently
+            const inactiveStyle = tab.isActionable
+              ? 'bg-indigo-500/10 text-indigo-200 border border-indigo-500/30 hover:bg-indigo-500/20 shadow-inner'
+              : 'text-slate-400 border border-transparent hover:text-white hover:bg-slate-800/60';
+
             return (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as any)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 whitespace-nowrap transition-colors ${
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 whitespace-nowrap transition-all ${
                   isActive
-                    ? 'bg-amber-500 text-slate-950 font-bold shadow-sm'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                    ? 'bg-amber-500 text-slate-950 font-bold shadow-md scale-[1.02]'
+                    : inactiveStyle
                 }`}
               >
-                <Icon className="w-3.5 h-3.5" />
+                <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-slate-900' : tab.isActionable ? 'text-indigo-400' : 'text-slate-500'}`} />
                 {tab.label}
               </button>
             );

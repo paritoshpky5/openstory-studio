@@ -628,8 +628,8 @@ export default function NewProjectPage() {
                   onChange={(e) => setLlmProvider(e.target.value as any)}
                   className="w-full bg-slate-900 border border-slate-700 text-xs text-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:border-amber-500"
                 >
-                  <option value="openai">OpenAI (GPT-4o) — Recommended</option>
-                  <option value="anthropic">Anthropic (Claude 3.5 Sonnet)</option>
+                  <option value="openai">OpenAI — Recommended</option>
+                  <option value="anthropic">Anthropic Claude</option>
                   <option value="gemini">Google Gemini (Gemini 1.5 Pro)</option>
                   <option value="openrouter">OpenRouter (Multi-LLM Gateway)</option>
                 </select>
@@ -733,7 +733,7 @@ export default function NewProjectPage() {
                 Click <strong className="text-white">Copy ChatGPT Master Prompt</strong> above.
               </li>
               <li>
-                Open <strong className="text-white">ChatGPT (GPT-4o)</strong>, <strong className="text-white">Claude 3.5</strong>, or <strong className="text-white">Google Gemini</strong>.
+                Open <strong className="text-white">ChatGPT</strong>, <strong className="text-white">Claude</strong>, or <strong className="text-white">Google Gemini</strong>.
               </li>
               <li>Paste the prompt and press Enter. It will analyze your story and return valid OpenStory JSON.</li>
               <li>Copy the raw JSON response from the LLM.</li>

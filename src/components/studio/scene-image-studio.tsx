@@ -26,9 +26,22 @@ interface SceneImageStudioProps {
 }
 
 export function SceneImageStudio({ projectId, project, onRefresh }: SceneImageStudioProps) {
-  const [selectedSceneId, setSelectedSceneId] = useState<string>(
-    project.scenes?.[0]?.id || ''
-  );
+  const [selectedSceneId, setSelectedSceneId] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = sessionStorage.getItem(`active_scene_${projectId}_image`);
+      if (saved && project.scenes?.some((s: any) => s.id === saved)) {
+        return saved;
+      }
+    }
+    return project.scenes?.[0]?.id || '';
+  });
+
+  useEffect(() => {
+    if (selectedSceneId) {
+      sessionStorage.setItem(`active_scene_${projectId}_image`, selectedSceneId);
+    }
+  }, [selectedSceneId, projectId]);
+
   const [assets, setAssets] = useState<any[]>([]);
   const [loadingAssets, setLoadingAssets] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -38,6 +51,49 @@ export function SceneImageStudio({ projectId, project, onRefresh }: SceneImageSt
   const [selectedProvider, setSelectedProvider] = useState<'FLUX' | 'GEMINI' | 'OPENAI'>('FLUX');
   const [selectedAssetType, setSelectedAssetType] = useState<'STORYBOARD' | 'PRODUCTION_IMAGE'>('PRODUCTION_IMAGE');
   const [actionInProgress, setActionInProgress] = useState<string | null>(null);
+  const [isGeneratingAll, setIsGeneratingAll] = useState(false);
+
+  const handleGenerateAllMissing = async () => {
+    if (!confirm('Are you sure you want to generate images for ALL scenes missing an active image? This will consume API credits.')) return;
+    setIsGeneratingAll(true);
+    let generatedCount = 0;
+    try {
+      for (const scene of project.scenes || []) {
+        const hasActiveImage = scene.assetVersions?.some((a: any) => a.assetType === selectedAssetType && a.isActive);
+        if (hasActiveImage) continue;
+
+        const res = await fetch(`/api/projects/${projectId}/generate-image`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sceneId: scene.id, assetType: selectedAssetType, provider: selectedProvider, forceRegeneration: false }),
+        });
+
+        if (!res.ok) {
+          const errText = await res.text();
+          let errMsg = errText;
+          try {
+            const errJson = JSON.parse(errText);
+            errMsg = errJson.error || errText;
+          } catch {}
+          throw new Error(`Shot #${scene.sceneNumber} failed: ${errMsg}`);
+        }
+
+        const data = await res.json();
+        if (data.success) generatedCount++;
+      }
+      if (generatedCount > 0) {
+        alert(`Successfully generated ${generatedCount} missing images!`);
+        await fetchAssets();
+        onRefresh?.();
+      } else {
+        alert('All scenes already have images.');
+      }
+    } catch (err: any) {
+      alert(`Batch generation error: ${err.message}`);
+    } finally {
+      setIsGeneratingAll(false);
+    }
+  };
 
   const selectedScene = project.scenes?.find((s: any) => s.id === selectedSceneId);
 
@@ -78,7 +134,7 @@ export function SceneImageStudio({ projectId, project, onRefresh }: SceneImageSt
       const data = await res.json();
       if (data.success) {
         await fetchAssets();
-        onRefresh();
+        onRefresh?.();
       } else {
         alert(data.error || 'Generation failed');
       }
@@ -100,7 +156,7 @@ export function SceneImageStudio({ projectId, project, onRefresh }: SceneImageSt
       const data = await res.json();
       if (data.success) {
         await fetchAssets();
-        onRefresh();
+        onRefresh?.();
       }
     } catch (err) {
       console.error(err);
@@ -123,7 +179,7 @@ export function SceneImageStudio({ projectId, project, onRefresh }: SceneImageSt
       const data = await res.json();
       if (data.success) {
         await fetchAssets();
-        onRefresh();
+        onRefresh?.();
       }
     } catch (err) {
       console.error(err);
@@ -174,7 +230,7 @@ export function SceneImageStudio({ projectId, project, onRefresh }: SceneImageSt
       const data = await res.json();
       if (data.success) {
         await fetchAssets();
-        onRefresh();
+        onRefresh?.();
       } else {
         alert(data.error || 'Upload failed');
       }
@@ -187,15 +243,31 @@ export function SceneImageStudio({ projectId, project, onRefresh }: SceneImageSt
     }
   };
 
-  const activeAsset = assets.find((a) => a.isActive);
+  const imageAssets = assets.filter(
+    (a) => a.assetType === 'PRODUCTION_IMAGE' || a.assetType === 'STORYBOARD'
+  );
+
+  const activeAsset =
+    imageAssets.find((a) => a.isActive && a.assetType === selectedAssetType) ||
+    imageAssets.find((a) => a.isActive) ||
+    imageAssets[0];
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
       {/* Scene Selector Sidebar */}
       <div className="lg:col-span-1 space-y-2">
-        <h3 className="text-xs font-mono uppercase text-slate-400 font-bold px-1">
-          Select Shot ({project.scenes?.length || 0})
-        </h3>
+        <div className="flex items-center justify-between px-1">
+          <h3 className="text-xs font-mono uppercase text-slate-400 font-bold">
+            Select Shot ({project.scenes?.length || 0})
+          </h3>
+          <button
+            onClick={handleGenerateAllMissing}
+            disabled={isGeneratingAll}
+            className="text-[10px] font-bold bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 px-2 py-1 rounded transition-colors disabled:opacity-50"
+          >
+            {isGeneratingAll ? 'Generating...' : 'Gen All Missing'}
+          </button>
+        </div>
         <div className="space-y-1.5 max-h-[700px] overflow-y-auto pr-1">
           {project.scenes?.map((scene: any) => {
             const isSelected = scene.id === selectedSceneId;
@@ -289,7 +361,7 @@ export function SceneImageStudio({ projectId, project, onRefresh }: SceneImageSt
                 >
                   <option value="FLUX">FLUX.1 [dev]</option>
                   <option value="GEMINI">Google Imagen 3</option>
-                  <option value="OPENAI">OpenAI DALL·E 3</option>
+                  <option value="OPENAI">OpenAI GPT Image</option>
                 </select>
 
                 {/* Copy Prompt for Free Web */}
@@ -442,9 +514,9 @@ export function SceneImageStudio({ projectId, project, onRefresh }: SceneImageSt
               <div className="flex items-center justify-between">
                 <h3 className="text-xs font-mono uppercase text-slate-400 font-bold flex items-center gap-1.5">
                   <Layers className="w-3.5 h-3.5 text-amber-400" />
-                  Candidate Takes ({assets.length})
+                  Candidate Takes ({imageAssets.length})
                 </h3>
-                {assets.length > 0 && (
+                {imageAssets.length > 0 && (
                   <button
                     onClick={() => handleGenerate(true)}
                     disabled={generating}
@@ -459,13 +531,13 @@ export function SceneImageStudio({ projectId, project, onRefresh }: SceneImageSt
                 <div className="p-8 text-center text-xs text-slate-500 font-mono">
                   Loading takes...
                 </div>
-              ) : assets.length === 0 ? (
+              ) : imageAssets.length === 0 ? (
                 <div className="p-6 rounded-lg bg-slate-900/40 border border-slate-800/80 text-center text-xs text-slate-500">
                   No generation takes generated for this shot.
                 </div>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {assets.map((asset) => {
+                  {imageAssets.map((asset) => {
                     const isTakeActive = asset.isActive;
                     const isApproved = asset.approvalStatus === 'APPROVED';
                     const isRejected = asset.approvalStatus === 'REJECTED';

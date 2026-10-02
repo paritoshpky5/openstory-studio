@@ -33,7 +33,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ path:
     }
 
     const dataRootDir = getDataRootDir();
-    let filePath = path.join(dataRootDir, ...requestedSegments);
+    const filePath = path.join(dataRootDir, ...requestedSegments);
     let normalizedTarget = path.normalize(filePath);
 
     // If the file doesn't exist at root (e.g. data/images/foo.png) and it's missing the "projects" prefix,

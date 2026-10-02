@@ -59,7 +59,7 @@ CRITICAL FILMMAKING & CONSISTENCY RULES:
    - Specify age, exact facial traits, warm Indian skin tone, eyes, hair texture, body proportions, and PRECISE clothing details (colors, textiles, patterns, accessories).
    - The "clothingDescription" field is strictly REQUIRED. Do NOT omit it.
    - The "role" field MUST BE EXACTLY ONE OF: "PROTAGONIST", "ANTAGONIST", "SUPPORTING", "EXTRA" (Do NOT use "MENTOR", etc).
-   - Set "referenceAssets" to an empty array: []
+   - Set "referenceAssets" to an empty array: []. Do NOT invent filenames, URLs, or reference IDs; users attach real reference media inside OpenStory Studio.
    - Character clothes and features must remain strictly consistent across scenes.
 3. VISUAL STYLE:
    - Polished cinematic stylized 3D animated film aesthetic.

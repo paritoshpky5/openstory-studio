@@ -5,7 +5,7 @@
 ### The Open-Source AI Filmmaking Suite for Cinematic Animated Stories with Strict Character Consistency
 
 [![MIT License](https://img.shields.io/badge/License-MIT-amber.svg)](LICENSE)
-[![Next.js](https://img.shields.io/badge/Next.js-14_App_Router-black.svg?logo=next.js)](https://nextjs.org/)
+[![Next.js](https://img.shields.io/badge/Next.js-16_App_Router-black.svg?logo=next.js)](https://nextjs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue.svg?logo=typescript)](https://www.typescriptlang.org/)
 [![Prisma](https://img.shields.io/badge/Prisma-SQLite_Local--First-2D3748.svg?logo=prisma)](https://www.prisma.io/)
 [![FFmpeg](https://img.shields.io/badge/FFmpeg-Deterministic_Audio_Ducking-007808.svg?logo=ffmpeg)](https://ffmpeg.org/)
@@ -42,7 +42,7 @@ flowchart LR
     D --> E[Approved Keyframe]
     E --> F[Image → Video Take]
     F --> G[Hindi Voice & LipSync]
-    G --> H[5-Stem Sound Mixer]
+    G --> H[Timeline Audio Mix]
     H --> I[Deterministic FFmpeg Render]
 ```
 
@@ -54,14 +54,14 @@ flowchart LR
 | :--- | :--- |
 | 👤 **Persistent Character Bibles** | Define and lock character traits (facial structure, skin tone, hair, clothing, accessories). Every generated shot inherits these tokens. |
 | 🎨 **Style Bible Locking** | Project-wide visual grammar (3D stylized animation, Indian environments, lighting, lens types, depth of field, negative constraints). |
-| 🤖 **1-Click AI Story Planning** | Auto-generate structured multi-shot scripts via **OpenAI (GPT-4o)**, **Claude 3.5 Sonnet**, **Google Gemini**, or **OpenRouter**, or use the free copy-paste prompt flow. |
-| 🎙️ **Solo Storyteller (कथावाचक) Mode** | Switch between single master voiceover storytelling or multi-character dramatic dialogue. |
+| 🤖 **1-Click AI Story Planning** | Generate structured story JSON with configured OpenAI, Anthropic, Google Gemini, or OpenRouter credentials, or use the free copy-paste prompt flow. |
+| 🎙️ **Solo Storyteller (कथावाचक) Mode** | The supported first-release audio workflow: one coherent narrator track across the story. Multi-character dialogue sequencing is on the roadmap. |
 | 🖼️ **Shot-by-Shot Image Studio** | Generate 3–8 second scenes individually. Approve candidate takes and promote them to **Approved Production Frames** before animating. |
 | 🎥 **Image-to-Video Engine** | Animate approved frames with controlled camera movements (*Slow Dolly In*, *Pan*, *Tilt*, *Orbit*) and motion dynamics via **Kling AI** & **Seedance**. |
 | 🎙️ **Hindi Voice Lab** | Native Hindi TTS powered by **Sarvam AI (`bulbul:v3`)** & **ElevenLabs**. Automatic number-to-Devanagari translation, currency conversions, and pronunciation dictionaries. |
 | 👄 **Video Lip Sync** | Automated character lip sync via **SyncLabs** with a built-in local FFmpeg fallback for dialogue scenes. |
-| 🎚️ **5-Stem Audio Mixer & Ducking** | Dedicated stems for *Dialogue*, *Narration*, *Ambience*, *SFX*, and *Music*. Features a frame-accurate **Audio Ducking Engine** that automatically lowers background music when characters speak. |
-| 📝 **Devanagari Subtitle Burner** | Automatically generates word-timed SRT subtitles and burns readable Hindi captions directly into the video stream. |
+| 🎚️ **Timeline Audio Mix & Ducking** | Mix active narration/dialogue with project music and automatically lower music during speech. Full interactive five-stem mixing remains roadmap work. |
+| 📝 **Devanagari Subtitle Burner** | Generates scene-timed SRT/VTT subtitles and can burn readable Hindi captions into the video stream. Word-level alignment remains roadmap work. |
 | 🎞️ **Deterministic FFmpeg Export** | Multi-track concatenation engine with 4 presets: **YouTube 1080p**, **Cinematic 4K**, **Shorts 9:16**, and **Fast Preview**. |
 | 📦 **1-Click Full Project Portability (.zip)** | Export and import entire video projects as self-contained `.zip` archives containing all scene prompts, camera motion specs, character bibles, and all local media files (images, audio voiceovers, video clips). Zero vendor lock-in. |
 
@@ -85,9 +85,9 @@ Take advantage of generous daily free web tiers with built-in **1-click launcher
 
 ### 2. ⚡ Direct API Mode (Programmatic Speed)
 Configure API keys in the **Settings** page for one-click automated generation:
-- **Story Planning**: OpenAI (GPT-4o), Anthropic (Claude 3.5), Google Gemini, OpenRouter
+- **Story Planning**: OpenAI, Anthropic, Google Gemini, OpenRouter
 - **Audio / TTS**: Sarvam AI, ElevenLabs
-- **Images**: Google AI Studio (Imagen), FLUX.1, OpenAI (DALL·E 3)
+- **Images**: Google Gemini image generation, FLUX, OpenAI GPT Image
 - **Video**: Kling AI, Seedance
 - **Lip Sync**: SyncLabs
 
@@ -114,12 +114,12 @@ Simply copy-paste the single command below for your operating system. It automat
 
 #### 🍎 macOS & 🐧 Linux:
 ```bash
-git clone https://github.com/yourusername/openstory-studio.git && cd openstory-studio && chmod +x start.sh && ./start.sh
+git clone https://github.com/paritoshpky5/openstory-studio.git && cd openstory-studio && chmod +x start.sh && ./start.sh
 ```
 
 #### 🪟 Windows (PowerShell):
 ```powershell
-git clone https://github.com/yourusername/openstory-studio.git; cd openstory-studio; .\start.bat
+git clone https://github.com/paritoshpky5/openstory-studio.git; cd openstory-studio; .\start.bat
 ```
 
 *(Or simply download/clone the repo and double-click `start.bat` on Windows or `./start.sh` on Mac/Linux!)*
@@ -129,7 +129,7 @@ git clone https://github.com/yourusername/openstory-studio.git; cd openstory-stu
 ### Manual Setup (Step-by-Step)
 
 #### Prerequisites
-- **Node.js** 18.17+ or higher
+- **Node.js** 20.9 or higher
 - **FFmpeg** and **FFprobe** (bundled automatically via `@ffmpeg-installer/ffmpeg`)
 - **Git**
 
@@ -137,7 +137,7 @@ git clone https://github.com/yourusername/openstory-studio.git; cd openstory-stu
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/yourusername/openstory-studio.git
+   git clone https://github.com/paritoshpky5/openstory-studio.git
    cd openstory-studio
    ```
 
@@ -200,7 +200,8 @@ openstory-studio/
 - [x] Character Identity Package & Style Bible locking
 - [x] Hindi audio preprocessing (number-to-words, currency, 80Hz rumble cut)
 - [x] Kling & Seedance async video job orchestrator with retry protection
-- [x] SyncLabs Lip Sync & 5-stem audio mixer
+- [x] SyncLabs v2 Lip Sync
+- [x] Timeline narration/dialogue mix with music ducking
 - [x] Deterministic FFmpeg render pipeline with sidechain music ducking
 - [x] 100% Free Web (Bring Your Own Asset) copy & upload workflow
 - [x] In-app API Key Management with password masking
@@ -208,6 +209,8 @@ openstory-studio/
 - [ ] Direct Grok Imagine Video & Luma Dream Machine provider adapters
 - [ ] Local ComfyUI / Wan 2.1 integration for 100% offline generation
 - [ ] Multi-character dialogue timeline sequencing
+- [ ] Interactive ambience/SFX/music five-stem mixer
+- [ ] Word-aligned subtitle timing
 
 ---
 

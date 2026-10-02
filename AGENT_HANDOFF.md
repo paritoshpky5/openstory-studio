@@ -1,5 +1,7 @@
 # OpenStory Studio — Complete Agent Handoff & Technical Blueprint (A to Z)
 
+> **Historical design record:** This file preserves early product decisions and may mention superseded model names or framework versions. Treat `README.md`, `package.json`, the Prisma schema, and the current source code as authoritative for shipped behavior.
+
 > **For Future Autonomous Agents & Developers**:  
 > Read this document first before writing or modifying any code. It contains the exact history of thoughts, architectural decisions, file structures, schemas, technical constraints, and design philosophies established across the entire lifecycle of this project.
 
@@ -23,8 +25,8 @@ A hybrid studio that enforces strict visual and character consistency via a **Ma
 
 | Component | Technology | Rationale / Detail |
 |---|---|---|
-| **OS** | Windows (PowerShell) | Workspace root: `q:\AiVidDesk` |
-| **Framework** | Next.js 14 (App Router) | React Server Components + Client interactive studio pages |
+| **OS** | Cross-platform launchers; Windows is the primary development environment | Local-first desktop workflow |
+| **Framework** | Next.js 16 (App Router) | React Server Components + client-side studio pages |
 | **Language** | TypeScript (Strict mode) | Strict type safety for JSON schemas and database models |
 | **Database** | SQLite via Prisma ORM | Zero-config, local-first database stored in `prisma/dev.db` |
 | **Styling** | Tailwind CSS + Lucide Icons | Dark cinematic UI, high-density dashboard layouts |

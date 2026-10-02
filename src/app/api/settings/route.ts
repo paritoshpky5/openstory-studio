@@ -3,8 +3,8 @@ import fs from 'fs';
 import path from 'path';
 
 const SUPPORTED_KEYS = [
-  { key: 'OPENAI_API_KEY', label: 'OpenAI (GPT-4o & DALL·E 3)', category: 'LLM & IMAGE' },
-  { key: 'ANTHROPIC_API_KEY', label: 'Anthropic (Claude 3.5 Sonnet)', category: 'LLM' },
+  { key: 'OPENAI_API_KEY', label: 'OpenAI (Story & GPT Image)', category: 'LLM & IMAGE' },
+  { key: 'ANTHROPIC_API_KEY', label: 'Anthropic (Claude)', category: 'LLM' },
   { key: 'GEMINI_API_KEY', label: 'Google AI Studio (Gemini 1.5 Pro & Imagen)', category: 'LLM & IMAGE' },
   { key: 'OPENROUTER_API_KEY', label: 'OpenRouter (Multi-LLM Gateway)', category: 'LLM' },
   { key: 'BFL_API_KEY', label: 'Black Forest Labs (Flux)', category: 'IMAGE' },

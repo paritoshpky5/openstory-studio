@@ -18,6 +18,8 @@ import {
   Copy,
   Check,
   ExternalLink,
+  ChevronDown,
+  ChevronRight,
 } from 'lucide-react';
 
 interface VoiceAudioStudioProps {
@@ -33,6 +35,7 @@ export function VoiceAudioStudio({ projectId, project, onRefresh }: VoiceAudioSt
   const [previewAudioUrl, setPreviewAudioUrl] = useState<string | null>(null);
   const [isPlayingPreview, setIsPlayingPreview] = useState<boolean>(false);
   const [generatingPreview, setGeneratingPreview] = useState<boolean>(false);
+  const [isAuditionOpen, setIsAuditionOpen] = useState<boolean>(false);
 
   // Character Casting State
   const [characterVoices, setCharacterVoices] = useState<Record<string, { provider: string; voiceId: string }>>({});
@@ -45,6 +48,76 @@ export function VoiceAudioStudio({ projectId, project, onRefresh }: VoiceAudioSt
   const [uploadingAudioSceneId, setUploadingAudioSceneId] = useState<string | null>(null);
   const [copiedSceneId, setCopiedSceneId] = useState<string | null>(null);
   const [openFreeTtsSceneId, setOpenFreeTtsSceneId] = useState<string | null>(null);
+  const [isGeneratingAll, setIsGeneratingAll] = useState(false);
+
+  const handleGenerateAllMissing = async () => {
+    if (!confirm('Are you sure you want to generate audio for ALL scenes missing active dialogue or narration? This will consume API credits.')) return;
+    setIsGeneratingAll(true);
+    let generatedCount = 0;
+    try {
+      for (const scene of project.scenes || []) {
+        const textToSpeak = scene.dialogueHindi || scene.narrationHindi;
+        if (!textToSpeak) continue;
+
+        const hasActiveAudio = scene.assetVersions?.some((a: any) => (a.assetType === 'DIALOGUE' || a.assetType === 'NARRATION') && a.isActive);
+        if (hasActiveAudio) continue;
+
+        // Figure out which voice to use. If character speaks, use their voice, else use first narrator voice.
+        let provider = 'sarvam';
+        let voiceId = 'shubh';
+
+        if (scene.speakingCharacterId && characterVoices[scene.speakingCharacterId]) {
+          provider = characterVoices[scene.speakingCharacterId].provider;
+          voiceId = characterVoices[scene.speakingCharacterId].voiceId;
+        } else {
+          // Find first character voice mapping if any, or default
+          const firstChar = Object.keys(characterVoices)[0];
+          if (firstChar) {
+            provider = characterVoices[firstChar].provider;
+            voiceId = characterVoices[firstChar].voiceId;
+          }
+        }
+
+        const res = await fetch(`/api/projects/${projectId}/audio/generate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sceneId: scene.id,
+            characterId: scene.speakingCharacterId || undefined,
+            provider: (provider || 'SARVAM').toUpperCase(),
+            voiceId,
+            text: textToSpeak,
+            assetType: scene.dialogueHindi ? 'DIALOGUE' : 'NARRATION',
+            forceRegeneration: true,
+          }),
+        });
+
+        if (!res.ok) {
+          const errText = await res.text();
+          let errMsg = errText;
+          try {
+            const errJson = JSON.parse(errText);
+            errMsg = errJson.error || errText;
+          } catch {}
+          throw new Error(`Scene #${scene.sceneNumber} failed: ${errMsg}`);
+        }
+
+        const data = await res.json();
+        if (data.success) generatedCount++;
+      }
+
+      if (generatedCount > 0) {
+        alert(`Successfully generated ${generatedCount} missing audio tracks!`);
+        onRefresh?.();
+      } else {
+        alert('All scenes with text already have active audio tracks.');
+      }
+    } catch (err: any) {
+      alert(`Batch generation error: ${err.message}`);
+    } finally {
+      setIsGeneratingAll(false);
+    }
+  };
 
   const handleCopyText = (sceneId: string, text: string) => {
     navigator.clipboard.writeText(text);
@@ -72,7 +145,7 @@ export function VoiceAudioStudio({ projectId, project, onRefresh }: VoiceAudioSt
           ...prev,
           [sceneId]: `/api/media/${data.filePath}`,
         }));
-        if (onRefresh) onRefresh();
+        if (onRefresh) onRefresh?.();
       } else {
         alert(data.error || 'Audio upload failed');
       }
@@ -189,7 +262,7 @@ export function VoiceAudioStudio({ projectId, project, onRefresh }: VoiceAudioSt
       });
       const data = await res.json();
       if (data.success) {
-        if (onRefresh) onRefresh();
+        if (onRefresh) onRefresh?.();
       } else {
         alert(data.error || 'Failed to assign voice');
       }
@@ -225,7 +298,7 @@ export function VoiceAudioStudio({ projectId, project, onRefresh }: VoiceAudioSt
       if (data.success && data.assetVersion) {
         const url = `/api/media/${data.assetVersion.filePath}`;
         setSceneAudioUrls((prev) => ({ ...prev, [scene.id]: url }));
-        if (onRefresh) onRefresh();
+        if (onRefresh) onRefresh?.();
       } else {
         alert(data.error || 'Failed to generate scene narration');
       }
@@ -295,7 +368,7 @@ export function VoiceAudioStudio({ projectId, project, onRefresh }: VoiceAudioSt
       />
 
       {/* HEADER */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-bold text-white flex items-center gap-2">
             <Volume2 className="w-6 h-6 text-amber-400" />
@@ -305,92 +378,117 @@ export function VoiceAudioStudio({ projectId, project, onRefresh }: VoiceAudioSt
             Native Sarvam AI Bulbul TTS & Multilingual Voice Studio with vocal chain mastering (-16 LUFS).
           </p>
         </div>
+        <button
+          onClick={handleGenerateAllMissing}
+          disabled={isGeneratingAll}
+          className="text-xs font-bold bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 px-3 py-2 rounded-lg transition-colors disabled:opacity-50 whitespace-nowrap"
+        >
+          {isGeneratingAll ? 'Generating...' : 'Gen All Missing Audio'}
+        </button>
       </div>
 
-      {/* SECTION 1: VOICE AUDITION & TESTING */}
-      <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-6 space-y-5">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <h3 className="font-bold text-sm text-white flex items-center gap-2">
+      {/* SECTION 1: VOICE AUDITION & TESTING (COLLAPSIBLE) */}
+      <div className="rounded-xl border border-slate-800 bg-slate-900/60 overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setIsAuditionOpen(!isAuditionOpen)}
+          className="w-full p-5 flex items-center justify-between hover:bg-slate-800/40 transition-colors text-left"
+        >
+          <div className="flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-cyan-400" />
-            Voice Audition & Blind Comparison
-          </h3>
-          <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
-            EBU R128 Mastered
-          </span>
-        </div>
-
-        {/* Audition Prompt Input */}
-        <div className="space-y-2">
-          <label className="text-xs font-semibold text-slate-300">
-            Hindi Dialogue / Test Script:
-          </label>
-          <div className="flex gap-2">
-            <textarea
-              rows={2}
-              value={testText}
-              onChange={(e) => setTestText(e.target.value)}
-              className="flex-1 bg-slate-950 border border-slate-800 rounded-lg p-3 text-xs text-slate-200 focus:outline-none focus:border-amber-500 leading-relaxed"
-              placeholder="Enter Hindi script with numbers (e.g. ₹500, 1947) or dialogue..."
-            />
+            <h3 className="font-bold text-sm text-white">
+              Voice Audition & Blind Comparison
+            </h3>
+            <span className="text-[11px] text-slate-400 ml-1.5 hidden sm:inline">
+              (Sample TTS voices & pronunciation)
+            </span>
           </div>
-        </div>
+          <div className="flex items-center gap-3">
+            <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 hidden sm:inline-block">
+              EBU R128 Mastered
+            </span>
+            <div className="p-1 rounded bg-slate-800 text-slate-300">
+              {isAuditionOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+            </div>
+          </div>
+        </button>
 
-        {/* Available Voice Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-          {voices.map((voice) => {
-            const isAuditioningThis = generatingPreview && selectedVoice === voice.id;
-            const isSelected = selectedVoice === voice.id;
-
-            return (
-              <div
-                key={voice.id}
-                className={`p-4 rounded-xl border transition-all flex flex-col justify-between space-y-3 ${
-                  isSelected
-                    ? 'border-amber-500/60 bg-amber-500/5'
-                    : 'border-slate-800 bg-slate-950/70 hover:border-slate-700'
-                }`}
-              >
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-white">{voice.name}</span>
-                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">
-                      {voice.provider}
-                    </span>
-                  </div>
-                  <div className="text-[11px] text-amber-300 font-medium">
-                    {voice.recommendedRole || voice.language}
-                  </div>
-                  <p className="text-[11px] text-slate-400 line-clamp-2 leading-relaxed">
-                    {voice.description}
-                  </p>
-                </div>
-
-                <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between">
-                  <span className="text-[10px] font-mono text-slate-500">
-                    {voice.gender}
-                  </span>
-                  <button
-                    onClick={() => handleAuditionVoice(voice.id)}
-                    disabled={isAuditioningThis}
-                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold bg-amber-500 text-slate-950 hover:bg-amber-400 transition-colors disabled:opacity-50"
-                  >
-                    {isAuditioningThis ? (
-                      <>
-                        <RefreshCw className="w-3 h-3 animate-spin" />
-                        Synthesizing...
-                      </>
-                    ) : (
-                      <>
-                        <Play className="w-3 h-3" />
-                        Audition
-                      </>
-                    )}
-                  </button>
-                </div>
+        {isAuditionOpen && (
+          <div className="p-6 pt-0 space-y-5 border-t border-slate-800/60 mt-1">
+            {/* Audition Prompt Input */}
+            <div className="space-y-2 pt-4">
+              <label className="text-xs font-semibold text-slate-300">
+                Hindi Dialogue / Test Script:
+              </label>
+              <div className="flex gap-2">
+                <textarea
+                  rows={2}
+                  value={testText}
+                  onChange={(e) => setTestText(e.target.value)}
+                  className="flex-1 bg-slate-950 border border-slate-800 rounded-lg p-3 text-xs text-slate-200 focus:outline-none focus:border-amber-500 leading-relaxed"
+                  placeholder="Enter Hindi script with numbers (e.g. ₹1500, 1947) or dialogue..."
+                />
               </div>
-            );
-          })}
-        </div>
+            </div>
+
+            {/* Available Voice Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {voices.map((voice) => {
+                const isAuditioningThis = generatingPreview && selectedVoice === voice.id;
+                const isSelected = selectedVoice === voice.id;
+
+                return (
+                  <div
+                    key={voice.id}
+                    className={`p-4 rounded-xl border transition-all flex flex-col justify-between space-y-3 ${
+                      isSelected
+                        ? 'border-amber-500/60 bg-amber-500/5'
+                        : 'border-slate-800 bg-slate-950/70 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-white">{voice.name}</span>
+                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">
+                          {voice.provider}
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-amber-300 font-medium">
+                        {voice.recommendedRole || voice.language}
+                      </div>
+                      <p className="text-[11px] text-slate-400 line-clamp-2 leading-relaxed">
+                        {voice.description}
+                      </p>
+                    </div>
+
+                    <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between">
+                      <span className="text-[10px] font-mono text-slate-500">
+                        {voice.gender}
+                      </span>
+                      <button
+                        onClick={() => handleAuditionVoice(voice.id)}
+                        disabled={isAuditioningThis}
+                        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold bg-amber-500 text-slate-950 hover:bg-amber-400 transition-colors disabled:opacity-50"
+                      >
+                        {isAuditioningThis ? (
+                          <>
+                            <RefreshCw className="w-3 h-3 animate-spin" />
+                            Synthesizing...
+                          </>
+                        ) : (
+                          <>
+                            <Play className="w-3 h-3" />
+                            Audition
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* SECTION 2: CHARACTER VOICE CASTING */}
@@ -490,7 +588,10 @@ export function VoiceAudioStudio({ projectId, project, onRefresh }: VoiceAudioSt
         <div className="divide-y divide-slate-800/80">
           {project?.scenes?.map((scene: any) => {
             const isLoading = sceneAudioLoading[scene.id];
-            const hasAudioUrl = sceneAudioUrls[scene.id];
+            const activeAudio = scene.assetVersions?.find(
+              (a: any) => (a.assetType === 'NARRATION' || a.assetType === 'DIALOGUE') && a.isActive
+            );
+            const audioUrl = sceneAudioUrls[scene.id] || (activeAudio ? `/api/media/${activeAudio.filePath}` : null);
             const isPlayingThis = playingSceneId === scene.id;
 
             return (
@@ -598,9 +699,9 @@ export function VoiceAudioStudio({ projectId, project, onRefresh }: VoiceAudioSt
                     )}
                   </div>
 
-                  {hasAudioUrl && (
+                  {audioUrl && (
                     <button
-                      onClick={() => handlePlaySceneAudio(scene.id, hasAudioUrl)}
+                      onClick={() => handlePlaySceneAudio(scene.id, audioUrl)}
                       className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors ${
                         isPlayingThis
                           ? 'border-emerald-500 bg-emerald-500/20 text-emerald-300'

@@ -7,7 +7,8 @@ describe('ChatGPT Story Planning Master Prompt', () => {
     expect(prompt).toContain('OpenStory Studio JSON project');
     expect(prompt).toContain('schemaVersion');
     expect(prompt).toContain('CharacterIdentityPackage');
-    expect(prompt).toContain('PRIMARY_FACE');
+    expect(prompt).toContain('"referenceAssets": []');
+    expect(prompt).toContain('Do NOT invent filenames, URLs, or reference IDs');
     expect(prompt).toContain('DEVANAGARI');
     expect(prompt).toContain('DO NOT GENERATE ONE GIANT VIDEO');
   });
