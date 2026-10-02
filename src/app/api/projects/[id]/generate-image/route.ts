@@ -3,6 +3,12 @@ import { z } from 'zod';
 import prisma from '@/lib/db/prisma';
 import { ImageWorkflowService } from '@/lib/services/image-workflow-service';
 import { PromptCompiler } from '@/lib/prompt-compiler/prompt-compiler';
+import {
+  projectBoundaryStatus,
+  requireProjectCharacter,
+  requireProjectScene,
+  requireProjectShot,
+} from '@/lib/security/project-boundary';
 
 const generateImageSchema = z.object({
   sceneId: z.string().optional().nullable(),
@@ -19,10 +25,8 @@ const generateImageSchema = z.object({
   forceRegeneration: z.boolean().default(false),
 });
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const projectId = params.id;
     const body = await request.json();
@@ -43,32 +47,80 @@ export async function POST(
     let modelId = validated.modelId;
     if (!modelId) {
       if (validated.provider === 'FLUX') modelId = 'flux-1-dev';
-      else if (validated.provider === 'GEMINI') modelId = 'imagen-3.0-generate-001';
-      else if (validated.provider === 'OPENAI') modelId = 'dall-e-3';
+      else if (validated.provider === 'GEMINI') modelId = 'gemini-3.1-flash-image';
+      else if (validated.provider === 'OPENAI') modelId = 'gpt-image-1';
       else modelId = 'flux-1-dev';
     }
 
     let finalPrompt = validated.customPrompt || '';
     let finalNegative = validated.customNegativePrompt || '';
 
-    // If no customPrompt was provided and we have a sceneId, compile prompt via PromptCompiler!
-    if (!finalPrompt && validated.sceneId) {
-      const scene = await prisma.scene.findUnique({
-        where: { id: validated.sceneId },
+    let scene: any = null;
+    let activeReferences: { characterId: string; filePath: string; type: string }[] = [];
+
+    if (validated.sceneId) {
+      await requireProjectScene(projectId, validated.sceneId);
+      scene = await prisma.scene.findFirst({
+        where: { id: validated.sceneId, projectId },
         include: {
           characters: {
-            include: { character: true },
+            include: {
+              character: { include: { references: true } },
+            },
           },
         },
       });
 
+      activeReferences = scene.characters.flatMap((sc: any) =>
+        sc.character.references
+          .filter((ref: any) => ref.isActive && ref.isApproved)
+          .map((ref: any) => ({
+            characterId: sc.character.id,
+            filePath: ref.filePath,
+            type: ref.referenceType,
+          }))
+      );
+    }
+    if (validated.characterId) await requireProjectCharacter(projectId, validated.characterId);
+    if (validated.shotId) {
+      const shot = await requireProjectShot(projectId, validated.shotId);
+      if (validated.sceneId && shot.sceneId !== validated.sceneId) {
+        return NextResponse.json({ error: 'Shot does not belong to the selected scene' }, { status: 400 });
+      }
+    }
+
+    // Client-provided reference paths are accepted only when they match approved references in this project.
+    if (validated.referencePaths.length > 0) {
+      const approved = await prisma.characterReference.findMany({
+        where: {
+          filePath: { in: validated.referencePaths },
+          isActive: true,
+          isApproved: true,
+          character: { projectId },
+        },
+      });
+      activeReferences.push(...approved.map((ref) => ({
+        characterId: ref.characterId,
+        filePath: ref.filePath,
+        type: ref.referenceType,
+      })));
+    }
+    activeReferences = Array.from(new Map(activeReferences.map((ref) => [ref.filePath, ref])).values());
+    if (validated.provider === 'FLUX' && activeReferences.length > 0 && modelId === 'flux-1-dev') {
+      modelId = 'flux-kontext-pro';
+    }
+
+    // Compile the same character-aware prompt used by API and manual workflows.
+    if (!finalPrompt && scene) {
+
       if (scene && project.styleBible) {
-        const characters = scene.characters.map((sc) => sc.character as any);
+        const characters = scene.characters.map((sc: any) => sc.character as any);
         const compiled = PromptCompiler.compileForImage(
           {
             scene: scene as any,
             styleBible: project.styleBible as any,
             characters,
+            activeReferences,
           },
           validated.provider as any
         );
@@ -97,7 +149,7 @@ export async function POST(
       prompt: finalPrompt,
       negativePrompt: finalNegative,
       settings: validated.settings,
-      referencePaths: validated.referencePaths,
+      referencePaths: activeReferences.map((ref) => ref.filePath),
       forceRegeneration: validated.forceRegeneration,
     });
 
@@ -109,7 +161,7 @@ export async function POST(
     console.error('Error generating image:', error);
     return NextResponse.json(
       { error: error.message || 'Image generation failed' },
-      { status: 500 }
+      { status: projectBoundaryStatus(error) }
     );
   }
 }

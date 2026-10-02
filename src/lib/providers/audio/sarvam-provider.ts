@@ -7,7 +7,7 @@ export class SarvamAudioProvider extends AudioProvider {
   getSupportedModels(): ModelDefinition[] {
     return [
       {
-        id: 'bulbul:v1',
+        id: 'bulbul:v3',
         provider: 'SARVAM',
         displayName: 'Sarvam Bulbul TTS',
         type: 'AUDIO',
@@ -32,18 +32,22 @@ export class SarvamAudioProvider extends AudioProvider {
     const apiKey = process.env.SARVAM_API_KEY;
 
     // Check for real API call vs Mock fallback
-    if (!apiKey) {
+    if (!apiKey && process.env.OPENSTORY_DEMO_MODE === 'true') {
       console.warn('[SarvamAudioProvider] SARVAM_API_KEY not found. Using local mock audio generation.');
       // Estimate duration: roughly 1 second per ~15 characters of Hindi text, minimum 1.5s
       const estimatedDuration = Math.max(1.5, Math.min(15.0, text.length / 15.0));
       const buffer = generateMockWavBuffer(estimatedDuration, 440);
       return { buffer };
     }
+    if (!apiKey) throw new Error('SARVAM_API_KEY is not configured. Use Free Web audio upload mode instead.');
 
-    const speaker = voiceId || 'meera';
-    const pace = settings.pace ?? 1.0;
-    const pitch = settings.pitch ?? 0.0;
-    const loudness = settings.loudness ?? 1.5;
+    const legacyVoiceMap: Record<string, string> = {
+      meera: 'ritu', pavithra: 'pooja', maitreyi: 'kavya',
+      arvind: 'rahul', amartya: 'amit', diwakar: 'shubh',
+    };
+    const speaker = legacyVoiceMap[voiceId] || voiceId || 'shubh';
+    const pace = Math.max(0.5, Math.min(2.0, settings.pace ?? 1.0));
+    const temperature = Math.max(0.01, Math.min(2.0, settings.temperature ?? 0.6));
 
     try {
       const response = await fetch('https://api.sarvam.ai/text-to-speech', {
@@ -53,15 +57,14 @@ export class SarvamAudioProvider extends AudioProvider {
           'api-subscription-key': apiKey,
         },
         body: JSON.stringify({
-          inputs: [text],
-          target_language_code: 'hi-IN',
+          text,
+          language_code: 'hi-IN',
           speaker: speaker,
-          pitch: pitch,
           pace: pace,
-          loudness: loudness,
-          speech_sample_rate: 22050,
-          enable_preprocessing: true,
-          model: modelId || 'bulbul:v1',
+          temperature,
+          speech_sample_rate: 24000,
+          output_audio_codec: 'wav',
+          model: modelId === 'bulbul:v1' ? 'bulbul:v3' : (modelId || 'bulbul:v3'),
         }),
       });
 

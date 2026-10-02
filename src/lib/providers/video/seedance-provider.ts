@@ -4,6 +4,13 @@ import { VideoProvider, ModelDefinition } from '../base-provider';
 
 export class SeedanceVideoProvider extends VideoProvider {
   readonly providerName = 'SEEDANCE';
+  private readonly baseUrl = 'https://ark.ap-southeast.bytepluses.com/api/v3/contents/generations/tasks';
+
+  private mapModel(modelId: string): string {
+    if (modelId === 'seedance-v1') return 'seedance-1-0-pro-fast-251015';
+    if (modelId === 'seedance-pro') return 'seedance-1-5-pro-251215';
+    return modelId;
+  }
 
   getSupportedModels(): ModelDefinition[] {
     return [
@@ -50,12 +57,7 @@ export class SeedanceVideoProvider extends VideoProvider {
   ): Promise<{ providerJobId: string }> {
     const apiKey = process.env.SEEDANCE_API_KEY || process.env.ARK_API_KEY;
 
-    if (!apiKey) {
-      console.warn('[SeedanceVideoProvider] SEEDANCE_API_KEY not found. Simulating async Seedance generation.');
-      const startTime = Date.now();
-      const providerJobId = `seedance_mock_${startTime}_${Math.random().toString(36).substring(2, 7)}`;
-      return { providerJobId };
-    }
+    if (!apiKey) throw new Error('Seedance direct API requires SEEDANCE_API_KEY. Use Free Web upload mode until it is configured.');
 
     try {
       const fullImagePath = this.resolveImagePath(imageReferencePath);
@@ -67,19 +69,27 @@ export class SeedanceVideoProvider extends VideoProvider {
         throw new Error(`Reference image not found for Seedance image-to-video: ${fullImagePath}`);
       }
 
-      const response = await fetch('https://api.seedance.ai/v1/video/generate', {
+      const extension = path.extname(fullImagePath).slice(1).toLowerCase() || 'png';
+      const response = await fetch(this.baseUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${apiKey}`,
         },
         body: JSON.stringify({
-          model: modelId || 'seedance-v1',
-          image_base64: base64Image,
-          prompt: prompt,
-          negative_prompt: settings.negativePrompt || 'blurry, bad geometry, unnatural movements',
+          model: this.mapModel(modelId || 'seedance-v1'),
+          content: [
+            { type: 'text', text: prompt },
+            {
+              type: 'image_url',
+              role: 'first_frame',
+              image_url: { url: `data:image/${extension};base64,${base64Image}` },
+            },
+          ],
           duration: settings.duration || 5,
-          camera_movement: settings.cameraMovement || 'NATURAL',
+          resolution: settings.resolution || '720p',
+          ratio: settings.aspectRatio || 'adaptive',
+          watermark: false,
         }),
       });
 
@@ -89,11 +99,11 @@ export class SeedanceVideoProvider extends VideoProvider {
       }
 
       const data = await response.json();
-      if (!data.task_id) {
+      if (!data.id) {
         throw new Error(`Seedance submission failed: ${JSON.stringify(data)}`);
       }
 
-      return { providerJobId: data.task_id };
+      return { providerJobId: data.id };
     } catch (error: any) {
       console.error('[SeedanceVideoProvider] generateVideo error:', error);
       throw error;
@@ -103,34 +113,13 @@ export class SeedanceVideoProvider extends VideoProvider {
   async checkStatus(
     providerJobId: string
   ): Promise<{ status: 'PROCESSING' | 'COMPLETED' | 'FAILED'; progress?: number; buffer?: Buffer; url?: string; error?: string }> {
-    if (providerJobId.startsWith('seedance_mock_')) {
-      const parts = providerJobId.split('_');
-      const startTime = parseInt(parts[2], 10);
-      const elapsed = Date.now() - startTime;
-      const targetDurationMs = 12000;
-
-      if (elapsed < targetDurationMs) {
-        return {
-          status: 'PROCESSING',
-          progress: Math.min(0.95, elapsed / targetDurationMs),
-        };
-      }
-
-      const mockBuffer = Buffer.from('mock seedance animated mp4 video content');
-      return {
-        status: 'COMPLETED',
-        progress: 1.0,
-        buffer: mockBuffer,
-      };
-    }
-
     const apiKey = process.env.SEEDANCE_API_KEY || process.env.ARK_API_KEY;
     if (!apiKey) {
       throw new Error('SEEDANCE_API_KEY missing while checking non-mock job status');
     }
 
     try {
-      const response = await fetch(`https://api.seedance.ai/v1/video/tasks/${providerJobId}`, {
+      const response = await fetch(`${this.baseUrl}/${providerJobId}`, {
         headers: {
           'Authorization': `Bearer ${apiKey}`,
         },
@@ -143,25 +132,25 @@ export class SeedanceVideoProvider extends VideoProvider {
 
       const data = await response.json();
 
-      if (data.status === 'PENDING' || data.status === 'RUNNING') {
+      if (data.status === 'queued' || data.status === 'running') {
         return {
           status: 'PROCESSING',
           progress: data.progress ?? 0.5,
         };
       }
 
-      if (data.status === 'SUCCESS') {
+      if (data.status === 'succeeded') {
         return {
           status: 'COMPLETED',
           progress: 1.0,
-          url: data.video_url,
+          url: data.content?.video_url,
         };
       }
 
-      if (data.status === 'FAILED') {
+      if (data.status === 'failed' || data.status === 'cancelled') {
         return {
           status: 'FAILED',
-          error: data.error_message || 'Seedance generation failed on provider',
+          error: data.error?.message || 'Seedance generation failed on provider',
         };
       }
 

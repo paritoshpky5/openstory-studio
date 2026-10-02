@@ -1,9 +1,19 @@
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 import { VideoProvider, ModelDefinition } from '../base-provider';
 
 export class KlingVideoProvider extends VideoProvider {
   readonly providerName = 'KLING';
+  private readonly baseUrl = 'https://api-singapore.klingai.com';
+
+  private createJwt(accessKey: string, secretKey: string): string {
+    const now = Math.floor(Date.now() / 1000);
+    const encode = (value: object) => Buffer.from(JSON.stringify(value)).toString('base64url');
+    const unsigned = `${encode({ alg: 'HS256', typ: 'JWT' })}.${encode({ iss: accessKey, exp: now + 1800, nbf: now - 5 })}`;
+    const signature = crypto.createHmac('sha256', secretKey).update(unsigned).digest('base64url');
+    return `${unsigned}.${signature}`;
+  }
 
   getSupportedModels(): ModelDefinition[] {
     return [
@@ -49,13 +59,10 @@ export class KlingVideoProvider extends VideoProvider {
     settings: any = {}
   ): Promise<{ providerJobId: string }> {
     const apiKey = process.env.KLING_API_KEY;
+    const apiSecret = process.env.KLING_API_SECRET;
 
-    // Check for real API call vs Mock fallback
-    if (!apiKey) {
-      console.warn('[KlingVideoProvider] KLING_API_KEY not found. Simulating async Kling generation.');
-      const startTime = Date.now();
-      const providerJobId = `kling_mock_${startTime}_${Math.random().toString(36).substring(2, 7)}`;
-      return { providerJobId };
+    if (!apiKey || !apiSecret) {
+      throw new Error('Kling direct API requires both KLING_API_KEY and KLING_API_SECRET. Use Free Web upload mode until both are configured.');
     }
 
     try {
@@ -71,15 +78,15 @@ export class KlingVideoProvider extends VideoProvider {
       const durationStr = settings.duration ? String(settings.duration) : '5';
       const mode = settings.mode || (modelId === 'kling-v1-5' ? 'pro' : 'std');
 
-      const response = await fetch('https://api.klingai.com/v1/videos/image2video', {
+      const response = await fetch(`${this.baseUrl}/v1/videos/image2video`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`,
+          'Authorization': `Bearer ${this.createJwt(apiKey, apiSecret)}`,
         },
         body: JSON.stringify({
-          model: modelId || 'kling-v1',
-          image: base64Image,
+          model_name: modelId || 'kling-v1',
+          image: `data:image/${path.extname(fullImagePath).slice(1).toLowerCase() || 'png'};base64,${base64Image}`,
           prompt: prompt,
           negative_prompt: settings.negativePrompt || 'distorted faces, jerky motion, bad anatomy, blur',
           cfg_scale: settings.cfgScale ?? 0.5,
@@ -112,38 +119,16 @@ export class KlingVideoProvider extends VideoProvider {
   async checkStatus(
     providerJobId: string
   ): Promise<{ status: 'PROCESSING' | 'COMPLETED' | 'FAILED'; progress?: number; buffer?: Buffer; url?: string; error?: string }> {
-    // Check if it's a simulated mock job
-    if (providerJobId.startsWith('kling_mock_')) {
-      const parts = providerJobId.split('_');
-      const startTime = parseInt(parts[2], 10);
-      const elapsed = Date.now() - startTime;
-      const targetDurationMs = 12000; // 12 seconds simulated rendering time
-
-      if (elapsed < targetDurationMs) {
-        return {
-          status: 'PROCESSING',
-          progress: Math.min(0.95, elapsed / targetDurationMs),
-        };
-      }
-
-      // Generate a mock MP4 placeholder buffer
-      const mockBuffer = Buffer.from('mock kling animated mp4 video content');
-      return {
-        status: 'COMPLETED',
-        progress: 1.0,
-        buffer: mockBuffer,
-      };
-    }
-
     const apiKey = process.env.KLING_API_KEY;
-    if (!apiKey) {
-      throw new Error('KLING_API_KEY missing while checking non-mock job status');
+    const apiSecret = process.env.KLING_API_SECRET;
+    if (!apiKey || !apiSecret) {
+      throw new Error('Kling API credentials are missing while checking job status');
     }
 
     try {
-      const response = await fetch(`https://api.klingai.com/v1/videos/image2video/${providerJobId}`, {
+      const response = await fetch(`${this.baseUrl}/v1/videos/image2video/${providerJobId}`, {
         headers: {
-          'Authorization': `Bearer ${apiKey}`,
+          'Authorization': `Bearer ${this.createJwt(apiKey, apiSecret)}`,
         },
       });
 

@@ -2,10 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { ProjectService } from '@/lib/services/project-service';
 import prisma from '@/lib/db/prisma';
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function GET(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const project = await ProjectService.getProject(params.id);
     if (!project) {
@@ -23,10 +21,8 @@ export async function GET(
   }
 }
 
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const body = await req.json();
     const updated = await prisma.project.update({
@@ -47,10 +43,8 @@ export async function PATCH(
   }
 }
 
-export async function DELETE(
-  req: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function DELETE(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     await prisma.project.delete({
       where: { id: params.id },

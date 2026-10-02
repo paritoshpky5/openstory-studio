@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import prisma from '@/lib/db/prisma';
 import { VideoJobOrchestrator } from '@/lib/services/video-job-orchestrator';
+import { projectBoundaryStatus, requireProjectAsset, requireProjectScene } from '@/lib/security/project-boundary';
 
 const generateVideoSchema = z.object({
   sceneId: z.string(),
@@ -16,18 +17,17 @@ const generateVideoSchema = z.object({
   forceRegeneration: z.boolean().optional(),
 });
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const projectId = params.id;
     const body = await request.json();
     const validated = generateVideoSchema.parse(body);
 
     // 1. Fetch Scene and verify its status
-    const scene = await prisma.scene.findUnique({
-      where: { id: validated.sceneId },
+    await requireProjectScene(projectId, validated.sceneId);
+    const scene = await prisma.scene.findFirst({
+      where: { id: validated.sceneId, projectId },
       include: {
         assetVersions: {
           orderBy: { createdAt: 'desc' },
@@ -43,12 +43,14 @@ export async function POST(
     let referenceImagePath = '';
 
     if (validated.imageAssetId) {
-      const explicitAsset = await prisma.assetVersion.findUnique({
-        where: { id: validated.imageAssetId },
-      });
-      if (explicitAsset) {
-        referenceImagePath = explicitAsset.filePath;
+      const explicitAsset = await requireProjectAsset(projectId, validated.imageAssetId);
+      if (explicitAsset.sceneId !== validated.sceneId) {
+        return NextResponse.json({ success: false, error: 'Image asset does not belong to the selected scene' }, { status: 400 });
       }
+      if (!['PRODUCTION_IMAGE', 'STORYBOARD'].includes(explicitAsset.assetType)) {
+        return NextResponse.json({ success: false, error: 'Selected asset is not an image frame' }, { status: 400 });
+      }
+      referenceImagePath = explicitAsset.filePath;
     }
 
     if (!referenceImagePath) {
@@ -111,7 +113,7 @@ export async function POST(
     console.error('[API generate-video] Error:', error);
     return NextResponse.json(
       { success: false, error: error.message || 'Video submission failed' },
-      { status: 500 }
+      { status: projectBoundaryStatus(error) }
     );
   }
 }

@@ -34,6 +34,7 @@ export default function NewProjectPage() {
   const [isGeneratingPrompt, setIsGeneratingPrompt] = useState(false);
   const [narrationMode, setNarrationMode] = useState<'SOLO_STORYTELLER' | 'DRAMATIC_DIALOGUE' | 'MINIMAL_NARRATION'>('SOLO_STORYTELLER');
   const [narratorTone, setNarratorTone] = useState<string>('Warm, engaging traditional Indian katha-vachak (दादी-नानी / ज्ञानी सूत्रधार)');
+  const [shotPlanningMode, setShotPlanningMode] = useState<'SCENE_AS_SHOT' | 'MULTI_SHOT'>('SCENE_AS_SHOT');
 
   // Auto-generation state (LLM API Automation)
   const [llmProvider, setLlmProvider] = useState<'openai' | 'anthropic' | 'gemini' | 'openrouter'>('openai');
@@ -108,6 +109,7 @@ export default function NewProjectPage() {
           storyText: userStory,
           narrationMode,
           narratorTone,
+          shotPlanningMode,
         }),
       });
       const data = await res.json();
@@ -131,6 +133,7 @@ export default function NewProjectPage() {
           storyText: userStory,
           narrationMode,
           narratorTone,
+          shotPlanningMode,
         }),
       });
       const data = await res.json();
@@ -156,6 +159,7 @@ export default function NewProjectPage() {
           storyText: userStory,
           narrationMode,
           narratorTone,
+          shotPlanningMode,
           provider: llmProvider,
           apiKey: customLlmKey || undefined,
         }),
@@ -227,7 +231,12 @@ export default function NewProjectPage() {
       const res = await fetch('/api/projects', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectJson: parsedPreview }),
+        body: JSON.stringify({
+          projectJson: {
+            ...parsedPreview,
+            project: { ...parsedPreview.project, shotPlanningMode },
+          },
+        }),
       });
       const result = await res.json();
 
@@ -441,6 +450,23 @@ export default function NewProjectPage() {
       {/* Tab 1: Copy Prompt */}
       {activeTab === 'prompt' && (
         <div className="space-y-6 bg-slate-900/60 border border-slate-800 rounded-xl p-6">
+          <label className="flex items-start gap-3 rounded-xl border border-slate-800 bg-slate-950/70 p-4 cursor-pointer hover:border-slate-700">
+            <input
+              type="checkbox"
+              checked={shotPlanningMode === 'MULTI_SHOT'}
+              onChange={(event) => {
+                setShotPlanningMode(event.target.checked ? 'MULTI_SHOT' : 'SCENE_AS_SHOT');
+                setPromptText('');
+              }}
+              className="mt-0.5 h-4 w-4 accent-amber-500"
+            />
+            <span>
+              <span className="block text-sm font-bold text-white">Allow multiple shots inside each scene</span>
+              <span className="mt-1 block text-xs text-slate-400">
+                Off keeps the simple workflow: every scene is one final shot. Turn it on for coverage, cutaways, and multiple camera setups per scene.
+              </span>
+            </span>
+          </label>
           {/* Storyteller & Narration Mode Selector */}
           <div className="space-y-3 pb-5 border-b border-slate-800">
             <div>
@@ -720,6 +746,18 @@ export default function NewProjectPage() {
       {/* Tab 2: Paste & Validate JSON */}
       {activeTab === 'import' && (
         <div className="space-y-6 bg-slate-900/60 border border-slate-800 rounded-xl p-6">
+          <label className="flex items-start gap-3 rounded-lg border border-slate-800 bg-slate-950/60 p-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={shotPlanningMode === 'MULTI_SHOT'}
+              onChange={(event) => setShotPlanningMode(event.target.checked ? 'MULTI_SHOT' : 'SCENE_AS_SHOT')}
+              className="mt-0.5 h-4 w-4 accent-amber-500"
+            />
+            <span className="text-xs text-slate-300">
+              <strong className="block text-white">Use multiple shots per scene</strong>
+              When off, OpenStory imports one production shot for every scene, even if the JSON contains additional shot suggestions.
+            </span>
+          </label>
           <div className="flex items-center justify-between">
             <label className="text-sm font-semibold text-slate-200">
               Paste ChatGPT / Claude JSON Response

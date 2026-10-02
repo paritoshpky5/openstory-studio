@@ -36,7 +36,7 @@ export class ModelRouter {
     }
 
     // 1. CAPABILITY GATE
-    let capableModels = models.filter((m) => {
+    const capableModels = models.filter((m) => {
       const caps = JSON.parse(m.capabilities || '{}');
       if (req.requiresImageToVideo && !caps.supportsImageToVideo) return false;
       if (req.requiresLipSync && !caps.supportsLipSync) return false;
@@ -107,7 +107,7 @@ export class ModelRouter {
 
     // 3. ECONOMIC ROUTING
     // Filter to those that pass the quality gate
-    let qualifiedModels = scoredModels.filter((sm) => sm.passesQualityGate);
+    const qualifiedModels = scoredModels.filter((sm) => sm.passesQualityGate);
 
     // If NO models pass the strict quality gate (e.g., all models are struggling with HERO shots),
     // fallback to the highest absolute quality model available, regardless of cost.

@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { AudioWorkflowService } from '@/lib/services/audio-workflow-service';
+import {
+  projectBoundaryStatus,
+  requireProject,
+  requireProjectCharacter,
+  requireProjectScene,
+} from '@/lib/security/project-boundary';
 
 const generateAudioSchema = z.object({
   sceneId: z.string().optional(),
@@ -14,14 +20,16 @@ const generateAudioSchema = z.object({
   forceRegeneration: z.boolean().optional(),
 });
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const projectId = params.id;
     const body = await request.json();
     const validated = generateAudioSchema.parse(body);
+
+    await requireProject(projectId);
+    if (validated.sceneId) await requireProjectScene(projectId, validated.sceneId);
+    if (validated.characterId) await requireProjectCharacter(projectId, validated.characterId);
 
     const result = await AudioWorkflowService.generateAudio({
       projectId,
@@ -47,7 +55,7 @@ export async function POST(
     console.error('[API generate-audio] Error:', error);
     return NextResponse.json(
       { success: false, error: error.message || 'Audio generation failed' },
-      { status: 500 }
+      { status: projectBoundaryStatus(error) }
     );
   }
 }

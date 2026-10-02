@@ -8,10 +8,8 @@ const updateVoiceSchema = z.object({
   voiceSettings: z.record(z.any()).optional(),
 });
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const characterId = params.id;
     const body = await request.json();

@@ -1,4 +1,5 @@
 import { ImageProvider, ModelDefinition } from '../base-provider';
+import fs from 'fs';
 
 export class FluxProvider extends ImageProvider {
   readonly providerName = 'FLUX';
@@ -13,6 +14,15 @@ export class FluxProvider extends ImageProvider {
 
   getSupportedModels(): ModelDefinition[] {
     return [
+      {
+        id: 'flux-kontext-pro',
+        provider: 'FLUX',
+        displayName: 'FLUX.1 Kontext [pro]',
+        type: 'IMAGE',
+        channel: 'DIRECT_API',
+        capabilities: { maxResolution: '1440x1440' },
+        pricing: { perImage: 0.04, currency: 'USD' },
+      },
       {
         id: 'flux-1-schnell',
         provider: 'FLUX',
@@ -58,6 +68,8 @@ export class FluxProvider extends ImageProvider {
         return 0.003;
       case 'flux-1-dev':
         return 0.03;
+      case 'flux-kontext-pro':
+        return 0.04;
       case 'flux-1-pro':
       case 'flux-pro-1.1':
       default:
@@ -73,6 +85,8 @@ export class FluxProvider extends ImageProvider {
         return 'flux-dev';
       case 'flux-pro-1.1':
         return 'flux-pro-1.1';
+      case 'flux-kontext-pro':
+        return 'flux-kontext-pro';
       case 'flux-1-pro':
       default:
         return 'flux-pro';
@@ -103,9 +117,12 @@ export class FluxProvider extends ImageProvider {
     referencePaths?: string[]
   ): Promise<{ providerJobId?: string; buffer?: Buffer; url?: string }> {
     // Check for mock / simulated mode if API key is not configured
-    if (!this.apiKey || this.apiKey === 'mock' || this.apiKey === 'placeholder') {
+    if (this.apiKey === 'mock' || (!this.apiKey && process.env.OPENSTORY_DEMO_MODE === 'true')) {
       const buffer = this.createMockImageBuffer('FLUX', modelId, prompt, settings);
       return { buffer };
+    }
+    if (!this.apiKey || this.apiKey === 'placeholder') {
+      throw new Error('BFL_API_KEY is not configured. Use Free Web upload mode or explicitly enable a test provider.');
     }
 
     const endpointName = this.mapEndpoint(modelId);
@@ -125,8 +142,12 @@ export class FluxProvider extends ImageProvider {
 
     // Reference image / image-to-image support if provided
     if (referencePaths && referencePaths.length > 0) {
-      // In BFL API, image-to-image uses input_image or image_prompt depending on endpoint
-      payload.image_prompt = referencePaths[0];
+      if (endpointName !== 'flux-kontext-pro') {
+        throw new Error('This FLUX model does not support character reference conditioning. Select FLUX Kontext, Gemini, or OpenAI.');
+      }
+      const referencePath = referencePaths[0];
+      if (!fs.existsSync(referencePath)) throw new Error(`Character reference file not found: ${referencePath}`);
+      payload.input_image = fs.readFileSync(referencePath).toString('base64');
     }
 
     const response = await fetch(`${this.baseUrl}/${endpointName}`, {

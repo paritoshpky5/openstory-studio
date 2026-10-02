@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { SoundDesignService } from '@/lib/audio/sound-design-service';
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const projectId = params.id;
     const result = await SoundDesignService.generateSubtitlesForProject(projectId);

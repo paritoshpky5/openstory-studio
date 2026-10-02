@@ -1,9 +1,10 @@
 import prisma from '@/lib/db/prisma';
-import { saveProjectMediaFile, ProjectSubdirectory } from '@/lib/storage/project-storage';
+import { resolveStoredMediaPath, saveProjectMediaFile, ProjectSubdirectory } from '@/lib/storage/project-storage';
 import { getImageProvider } from '@/lib/providers/image';
 import { JobManager, GenerationRequest } from './job-manager';
 import { PricingCalculator } from './pricing-calculator';
 import { JobType } from '@/schemas/job.schema';
+import { detectMedia } from '@/lib/security/media-upload';
 
 export interface GenerateImageWorkflowInput {
   projectId: string;
@@ -84,12 +85,15 @@ export class ImageWorkflowService {
     try {
       // 4. Dispatch to provider adapter
       const imageProvider = getImageProvider(providerName);
+      const providerReferencePaths = referencePaths.map((referencePath) =>
+        resolveStoredMediaPath(projectId, referencePath)
+      );
       const result = await imageProvider.generateImage(
         modelId,
         prompt,
         negativePrompt || undefined,
         settings,
-        referencePaths
+        providerReferencePaths
       );
 
       if (!result.buffer) {
@@ -104,9 +108,13 @@ export class ImageWorkflowService {
       if (assetType === 'CHARACTER_REFERENCE') subdir = 'character-references';
 
       // 6. Determine extension and mime type
-      const isSvg = result.buffer.toString('utf-8', 0, 50).includes('<svg');
-      const ext = isSvg ? 'svg' : 'png';
-      const mimeType = isSvg ? 'image/svg+xml' : 'image/png';
+      const isSvg = result.buffer.toString('utf-8', 0, 100).includes('<svg');
+      const detected = isSvg ? null : detectMedia(result.buffer);
+      if (!isSvg && detected?.category !== 'image') {
+        throw new Error('Image provider returned an unsupported or invalid image payload');
+      }
+      const ext = isSvg ? 'svg' : detected!.extension;
+      const mimeType = isSvg ? 'image/svg+xml' : detected!.mimeType;
 
       // 7. Save file non-destructively to disk
       const baseFilename = sceneId ? `scene_${sceneId}_${assetType.toLowerCase()}` : `char_${characterId || 'asset'}`;

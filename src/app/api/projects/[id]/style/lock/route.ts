@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ProjectService } from '@/lib/services/project-service';
 
-export async function POST(
-  req: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const { isLocked } = await req.json();
     const updatedStyle = await ProjectService.toggleStyleLock(

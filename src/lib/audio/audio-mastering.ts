@@ -85,7 +85,7 @@ export class AudioMasteringService {
     ].join(',');
 
     return new Promise((resolve, reject) => {
-      let command = ffmpeg(inputPath)
+      const command = ffmpeg(inputPath)
         .audioFilters(filterChain)
         .audioCodec('pcm_s16le') // High quality uncompressed PCM WAV for studio pipeline
         .format('wav');

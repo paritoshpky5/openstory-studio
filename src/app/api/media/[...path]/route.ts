@@ -17,10 +17,8 @@ const MIME_MAP: Record<string, string> = {
   '.json': 'application/json',
 };
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { path: string[] } }
-) {
+export async function GET(request: NextRequest, props: { params: Promise<{ path: string[] }> }) {
+  const params = await props.params;
   try {
     const requestedSegments = params.path;
     if (!requestedSegments || requestedSegments.length === 0) {

@@ -27,6 +27,7 @@ export class ProjectService {
           targetLanguage: project.targetLanguage || 'hi-IN',
           schemaVersion: data.schemaVersion,
           budgetLimit: project.budgetLimit,
+          shotPlanningMode: project.shotPlanningMode,
           currentPhase: 'CHARACTER_BIBLE',
         },
       });
@@ -54,11 +55,11 @@ export class ProjectService {
         },
       });
 
-      // Create Characters & References
+      // Create Characters & References. Imported IDs are project-local aliases, not global DB IDs.
+      const characterIdMap = new Map<string, string>();
       for (const char of characters) {
         const createdChar = await tx.character.create({
           data: {
-            id: char.id, // preserve imported character id
             projectId: p.id,
             name: char.name,
             role: char.role,
@@ -85,6 +86,7 @@ export class ProjectService {
             voiceSettings: char.voiceSettings ? JSON.stringify(char.voiceSettings) : null,
           },
         });
+        characterIdMap.set(char.id, createdChar.id);
 
         if (char.referenceAssets && char.referenceAssets.length > 0) {
           for (const ref of char.referenceAssets) {
@@ -120,7 +122,9 @@ export class ProjectService {
             summary: scene.summary,
             narrationHindi: scene.narrationHindi,
             dialogueHindi: scene.dialogueHindi,
-            speakingCharacterId: scene.speakingCharacterId,
+            speakingCharacterId: scene.speakingCharacterId
+              ? characterIdMap.get(scene.speakingCharacterId) || null
+              : null,
             shotType: scene.shotType,
             cameraAngle: scene.cameraAngle,
             cameraMovement: scene.cameraMovement,
@@ -135,16 +139,18 @@ export class ProjectService {
 
         // Link characters in scene
         for (const charId of scene.characterIds) {
+          const mappedCharacterId = characterIdMap.get(charId);
+          if (!mappedCharacterId) continue;
           await tx.sceneCharacter.create({
             data: {
               sceneId: createdScene.id,
-              characterId: charId,
+              characterId: mappedCharacterId,
             },
           });
         }
 
         // Create shots
-        if (scene.shots && scene.shots.length > 0) {
+        if (project.shotPlanningMode === 'MULTI_SHOT' && scene.shots && scene.shots.length > 0) {
           for (const shot of scene.shots) {
             await tx.shot.create({
               data: {
@@ -198,7 +204,9 @@ export class ProjectService {
           include: {
             characters: {
               include: {
-                character: true,
+                character: {
+                  include: { references: true },
+                },
               },
             },
             shots: true,

@@ -11,6 +11,7 @@ export const PROJECT_SUBDIRECTORIES = [
   'narration',
   'dialogue',
   'music',
+  'ambience',
   'sfx',
   'subtitles',
   'renders',
@@ -78,6 +79,16 @@ export function generateMediaFilename(
  */
 export function resolveProjectPath(projectId: string, relativePath: string): string {
   return path.join(getProjectDir(projectId), relativePath);
+}
+
+/** Resolves either a project-relative asset path or a legacy data-root-relative path. */
+export function resolveStoredMediaPath(projectId: string, storedPath: string): string {
+  if (path.isAbsolute(storedPath)) return storedPath;
+  const normalized = storedPath.replace(/\\/g, '/');
+  if (normalized.startsWith('projects/')) {
+    return path.join(/* turbopackIgnore: true */ getDataRootDir(), ...normalized.split('/'));
+  }
+  return path.join(/* turbopackIgnore: true */ getProjectDir(projectId), ...normalized.split('/'));
 }
 
 /**

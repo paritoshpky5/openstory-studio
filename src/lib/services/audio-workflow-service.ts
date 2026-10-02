@@ -15,8 +15,8 @@ export interface GenerateAudioRequest {
   assetType: 'NARRATION' | 'DIALOGUE';
   text: string;
   provider?: string;    // 'SARVAM' | 'ELEVENLABS'
-  modelId?: string;     // 'bulbul:v1' | 'eleven_multilingual_v2'
-  voiceId?: string;     // 'meera', 'arvind', etc.
+  modelId?: string;     // 'bulbul:v3' | 'eleven_multilingual_v2'
+  voiceId?: string;     // 'shubh', 'ritu', etc.
   settings?: any;
   masterAudio?: boolean; // Run through vocal mastering chain (default true)
   forceRegeneration?: boolean;
@@ -36,8 +36,8 @@ export class AudioWorkflowService {
    */
   static async generateAudio(req: GenerateAudioRequest): Promise<AudioGenerationResult> {
     const providerName = req.provider || 'SARVAM';
-    const modelId = req.modelId || (providerName === 'SARVAM' ? 'bulbul:v1' : 'eleven_multilingual_v2');
-    const voiceId = req.voiceId || (providerName === 'SARVAM' ? 'meera' : '21m00Tcm4TlvDq8ikWAM');
+    const modelId = req.modelId || (providerName === 'SARVAM' ? 'bulbul:v3' : 'eleven_multilingual_v2');
+    const voiceId = req.voiceId || (providerName === 'SARVAM' ? 'shubh' : '21m00Tcm4TlvDq8ikWAM');
     const settings = req.settings || {};
     const shouldMaster = req.masterAudio ?? true;
 

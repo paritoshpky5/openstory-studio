@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import AdmZip from 'adm-zip';
+import { z } from 'zod';
 import prisma from '@/lib/db/prisma';
 import {
   ensureProjectStorage,
@@ -17,6 +18,65 @@ export interface ExportZipResult {
 export interface ImportZipResult {
   projectId: string;
   name: string;
+}
+
+export const MAX_ARCHIVE_COMPRESSED_BYTES = 250 * 1024 * 1024;
+const MAX_ARCHIVE_ENTRIES = 5_000;
+const MAX_ARCHIVE_ENTRY_BYTES = 512 * 1024 * 1024;
+const MAX_ARCHIVE_UNCOMPRESSED_BYTES = 2 * 1024 * 1024 * 1024;
+const MAX_MANIFEST_BYTES = 5 * 1024 * 1024;
+
+const ArchiveManifestSchema = z.object({
+  format: z.literal('openstory-archive').optional(),
+  schemaVersion: z.string().max(32).default('1.0.0'),
+  project: z.object({
+    id: z.string().max(200).optional(),
+    name: z.string().min(1).max(200),
+    description: z.string().max(20_000).nullable().optional(),
+    aspectRatio: z.string().max(20).optional(),
+    fps: z.number().int().min(1).max(120).optional(),
+    targetLanguage: z.string().max(30).optional(),
+    currentPhase: z.string().max(80).optional(),
+    budgetLimit: z.number().nonnegative().nullable().optional(),
+    shotPlanningMode: z.enum(['SCENE_AS_SHOT', 'MULTI_SHOT']).optional(),
+  }).passthrough(),
+  styleBible: z.record(z.any()).nullable().optional(),
+  characters: z.array(z.record(z.any())).max(1_000).default([]),
+  scenes: z.array(z.record(z.any())).max(10_000).default([]),
+  allAssetVersions: z.array(z.record(z.any())).max(50_000).default([]),
+  pronunciations: z.array(z.record(z.any())).max(10_000).default([]),
+}).passthrough();
+
+export function normalizedEntryName(entryName: string): string {
+  const normalized = entryName.replace(/\\/g, '/');
+  if (
+    normalized.includes('\0') ||
+    normalized.startsWith('/') ||
+    /^[a-zA-Z]:/.test(normalized) ||
+    normalized.split('/').some((part) => part === '..')
+  ) {
+    throw new Error(`Unsafe path in project archive: ${entryName}`);
+  }
+  return normalized;
+}
+
+export function mediaRelativePath(entryName: string): string | null {
+  const normalized = normalizedEntryName(entryName);
+  const parts = normalized.split('/').filter(Boolean);
+  const mediaIndex = parts.indexOf('media');
+  if (mediaIndex < 0) return null;
+  const relativeParts = parts.slice(mediaIndex + 1);
+  if (relativeParts.length < 2 || !PROJECT_SUBDIRECTORIES.includes(relativeParts[0] as any)) return null;
+  return relativeParts.join('/');
+}
+
+export function resolveArchiveDestination(root: string, relativePath: string): string {
+  const resolvedRoot = path.resolve(root);
+  const destination = path.resolve(resolvedRoot, ...relativePath.split('/'));
+  if (!destination.startsWith(`${resolvedRoot}${path.sep}`)) {
+    throw new Error(`Archive path escapes project directory: ${relativePath}`);
+  }
+  return destination;
 }
 
 export class ProjectArchiveService {
@@ -66,6 +126,7 @@ export class ProjectArchiveService {
         targetLanguage: project.targetLanguage,
         currentPhase: project.currentPhase,
         budgetLimit: project.budgetLimit,
+        shotPlanningMode: project.shotPlanningMode,
       },
       styleBible: project.styleBible,
       characters: project.characters,
@@ -111,8 +172,27 @@ export class ProjectArchiveService {
    * restoring all database records and unpacking media files into local disk storage.
    */
   static async importProjectZip(zipBuffer: Buffer): Promise<ImportZipResult> {
+    if (zipBuffer.length === 0 || zipBuffer.length > MAX_ARCHIVE_COMPRESSED_BYTES) {
+      throw new Error('Project archive is empty or exceeds the 250 MB compressed upload limit.');
+    }
     const zip = new AdmZip(zipBuffer);
     const entries = zip.getEntries();
+    if (entries.length === 0 || entries.length > MAX_ARCHIVE_ENTRIES) {
+      throw new Error(`Project archive must contain between 1 and ${MAX_ARCHIVE_ENTRIES} entries.`);
+    }
+
+    let totalUncompressedBytes = 0;
+    for (const entry of entries) {
+      normalizedEntryName(entry.entryName);
+      const size = Number((entry.header as any).size || 0);
+      if (!Number.isSafeInteger(size) || size < 0 || size > MAX_ARCHIVE_ENTRY_BYTES) {
+        throw new Error(`Archive entry is too large: ${entry.entryName}`);
+      }
+      totalUncompressedBytes += size;
+      if (totalUncompressedBytes > MAX_ARCHIVE_UNCOMPRESSED_BYTES) {
+        throw new Error('Project archive expands beyond the 2 GB safety limit.');
+      }
+    }
 
     // 1. Locate and parse project.json
     const manifestEntry = entries.find(
@@ -123,15 +203,15 @@ export class ProjectArchiveService {
       throw new Error('Invalid OpenStory project archive: project.json manifest not found inside ZIP.');
     }
 
-    let manifest: any;
-    try {
-      manifest = JSON.parse(manifestEntry.getData().toString('utf-8'));
-    } catch (err: any) {
-      throw new Error(`Failed to parse project.json manifest: ${err.message}`);
+    if (Number((manifestEntry.header as any).size || 0) > MAX_MANIFEST_BYTES) {
+      throw new Error('Project manifest exceeds the 5 MB safety limit.');
     }
 
-    if (!manifest.project || !manifest.project.name) {
-      throw new Error('Invalid project manifest: missing required project metadata.');
+    let manifest: z.infer<typeof ArchiveManifestSchema>;
+    try {
+      manifest = ArchiveManifestSchema.parse(JSON.parse(manifestEntry.getData().toString('utf-8')));
+    } catch (err: any) {
+      throw new Error(`Failed to parse project.json manifest: ${err.message}`);
     }
 
     const oldProjectId = manifest.project.id || 'old_project';
@@ -147,33 +227,23 @@ export class ProjectArchiveService {
         schemaVersion: manifest.schemaVersion || '1.0.0',
         currentPhase: manifest.project.currentPhase || 'STORY_IMPORT',
         budgetLimit: manifest.project.budgetLimit,
+        shotPlanningMode: manifest.project.shotPlanningMode || 'SCENE_AS_SHOT',
       },
     });
 
     const newProjectId = createdProject.id;
     const newProjectDiskDir = ensureProjectStorage(newProjectId);
 
-    // 3. Extract media files into data/projects/{newProjectId}/
-    for (const entry of entries) {
-      if (entry.isDirectory || entry.entryName.endsWith('project.json')) {
-        continue;
-      }
-
-      let relPath = entry.entryName.replace(/\\/g, '/');
-
-      // Strip potential root archive folders or media/ prefix
-      const mediaIdx = relPath.indexOf('media/');
-      if (mediaIdx !== -1) {
-        relPath = relPath.substring(mediaIdx + 'media/'.length);
-      }
-
-      // Check if path starts with one of our recognized subdirectories
-      const matchesSubdir = PROJECT_SUBDIRECTORIES.some((sub) =>
-        relPath.startsWith(`${sub}/`)
-      );
-
-      if (matchesSubdir) {
-        const destPath = path.join(newProjectDiskDir, relPath);
+    try {
+      // 3. Extract only recognized media paths, with canonical boundary checks.
+      const extractedPaths = new Set<string>();
+      for (const entry of entries) {
+        if (entry.isDirectory || entry === manifestEntry) continue;
+        const relPath = mediaRelativePath(entry.entryName);
+        if (relPath) {
+          const destPath = resolveArchiveDestination(newProjectDiskDir, relPath);
+          if (extractedPaths.has(destPath)) throw new Error(`Duplicate archive path: ${relPath}`);
+          extractedPaths.add(destPath);
         const destDir = path.dirname(destPath);
         if (!fs.existsSync(destDir)) {
           fs.mkdirSync(destDir, { recursive: true });
@@ -185,7 +255,7 @@ export class ProjectArchiveService {
     // Helper: remap old file paths to new project directory
     const remapFilePath = (oldPath?: string | null): string | null => {
       if (!oldPath) return null;
-      let normalized = oldPath.replace(/\\/g, '/');
+      const normalized = oldPath.replace(/\\/g, '/');
       if (oldProjectId && normalized.includes(oldProjectId)) {
         return normalized.replace(oldProjectId, newProjectId);
       }
@@ -196,7 +266,7 @@ export class ProjectArchiveService {
     };
 
     // 4. In a clean transaction, recreate all child records with remapped IDs & paths
-    await prisma.$transaction(async (tx) => {
+      await prisma.$transaction(async (tx) => {
       // Recreate StyleBible
       if (manifest.styleBible) {
         await tx.styleBible.create({
@@ -411,10 +481,19 @@ export class ProjectArchiveService {
           });
         }
       }
-    });
+      });
 
-    // 5. Save refreshed project.json manifest in new storage directory
-    await saveProjectManifest(newProjectId, manifest);
+      // 5. Save refreshed project.json manifest in new storage directory
+      await saveProjectManifest(newProjectId, manifest);
+    } catch (error) {
+      await prisma.project.delete({ where: { id: newProjectId } }).catch(() => undefined);
+      const resolvedProjectDir = path.resolve(newProjectDiskDir);
+      const projectsRoot = path.resolve(path.dirname(newProjectDiskDir));
+      if (resolvedProjectDir.startsWith(`${projectsRoot}${path.sep}`)) {
+        await fs.promises.rm(resolvedProjectDir, { recursive: true, force: true }).catch(() => undefined);
+      }
+      throw error;
+    }
 
     return {
       projectId: newProjectId,

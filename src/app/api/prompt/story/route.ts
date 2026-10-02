@@ -8,6 +8,7 @@ export async function POST(req: NextRequest) {
       userStoryText: body.storyText,
       narrationMode: body.narrationMode,
       narratorTone: body.narratorTone,
+      shotPlanningMode: body.shotPlanningMode,
     });
     return NextResponse.json({ success: true, prompt: storyPrompt });
   } catch (error: any) {

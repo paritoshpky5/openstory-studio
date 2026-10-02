@@ -40,7 +40,7 @@ export class HindiTTSPreprocessor {
     if (num < 0) return 'ऋण ' + this.numberToHindiWords(Math.abs(num));
     if (num <= 100) return this.ONES[num] || num.toString();
 
-    let parts: string[] = [];
+    const parts: string[] = [];
 
     // Crores (1,00,00,000)
     if (num >= 10000000) {

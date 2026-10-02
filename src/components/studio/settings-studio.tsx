@@ -31,7 +31,7 @@ const API_KEYS_LIST: KeyConfig[] = [
     key: 'SARVAM_API_KEY',
     name: 'Sarvam AI API Key',
     category: 'AUDIO',
-    description: 'Specialized in Indian language TTS (bulbul:v1). Highly recommended for natural Hindi accents.',
+    description: 'Specialized in Indian language TTS (bulbul:v3). Highly recommended for natural Hindi accents.',
     portalUrl: 'https://sarvam.ai',
     pricingHint: 'Pay-as-you-go (~₹0.20 per min of speech). Signup trial credits available.',
   },
@@ -47,7 +47,7 @@ const API_KEYS_LIST: KeyConfig[] = [
   // IMAGE MODELS
   {
     key: 'GEMINI_API_KEY',
-    name: 'Google AI Studio (Gemini / Imagen 3)',
+    name: 'Google AI Studio (Gemini Image)',
     category: 'IMAGE',
     description: 'Used for cinematic Indian character compositions and storyboard generation.',
     portalUrl: 'https://aistudio.google.com',
@@ -63,7 +63,7 @@ const API_KEYS_LIST: KeyConfig[] = [
   },
   {
     key: 'OPENAI_API_KEY',
-    name: 'OpenAI API Key (DALL·E 3)',
+    name: 'OpenAI API Key (GPT Image)',
     category: 'IMAGE',
     description: 'Hero frames and prompt-faithful compositions.',
     portalUrl: 'https://platform.openai.com',

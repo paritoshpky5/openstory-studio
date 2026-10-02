@@ -2,6 +2,7 @@ export interface StoryPromptOptions {
   userStoryText?: string;
   narrationMode?: 'SOLO_STORYTELLER' | 'DRAMATIC_DIALOGUE' | 'MINIMAL_NARRATION';
   narratorTone?: string;
+  shotPlanningMode?: 'SCENE_AS_SHOT' | 'MULTI_SHOT';
 }
 
 /**
@@ -12,6 +13,7 @@ export function generateChatGPTStoryPrompt(options?: StoryPromptOptions | string
   let userStoryText: string | undefined;
   let narrationMode: 'SOLO_STORYTELLER' | 'DRAMATIC_DIALOGUE' | 'MINIMAL_NARRATION' = 'SOLO_STORYTELLER';
   let narratorTone = 'Warm, engaging traditional Indian katha-vachak (दादी-नानी या ज्ञानी सूत्रधार की शैली)';
+  let shotPlanningMode: 'SCENE_AS_SHOT' | 'MULTI_SHOT' = 'SCENE_AS_SHOT';
 
   if (typeof options === 'string') {
     userStoryText = options;
@@ -19,6 +21,7 @@ export function generateChatGPTStoryPrompt(options?: StoryPromptOptions | string
     userStoryText = options.userStoryText;
     if (options.narrationMode) narrationMode = options.narrationMode;
     if (options.narratorTone) narratorTone = options.narratorTone;
+    if (options.shotPlanningMode) shotPlanningMode = options.shotPlanningMode;
   }
 
   // Voice architecture instructions based on user selection
@@ -48,7 +51,9 @@ export function generateChatGPTStoryPrompt(options?: StoryPromptOptions | string
 Your task is to analyze the story provided below and decompose it into a complete, production-ready OpenStory Studio JSON project file adhering to schemaVersion "1.0.0".
 
 CRITICAL FILMMAKING & CONSISTENCY RULES:
-1. DO NOT GENERATE ONE GIANT VIDEO. Break the story into short cinematic shots/scenes (each 3 to 8 seconds).
+1. DO NOT GENERATE ONE GIANT VIDEO. ${shotPlanningMode === 'MULTI_SHOT'
+  ? 'Break the story into narrative scenes, and give each scene a shots array with one or more distinct 3 to 8 second camera setups.'
+  : 'Treat every scene as exactly one final 3 to 8 second production shot. Include exactly one item in each scene shots array.'}
 2. CHARACTER CONSISTENCY IS SUPREME:
    - For every major recurring character, create a rigorous "CharacterIdentityPackage".
    - Specify age, exact facial traits, warm Indian skin tone, eyes, hair texture, body proportions, and PRECISE clothing details (colors, textiles, patterns, accessories).
@@ -75,7 +80,8 @@ Return ONLY valid JSON matching this exact structure with no markdown code block
     "description": "Brief narrative overview",
     "aspectRatio": "16:9",
     "fps": 24,
-    "targetLanguage": "hi-IN"
+    "targetLanguage": "hi-IN",
+    "shotPlanningMode": "${shotPlanningMode}"
   },
   "styleBible": {
     "masterStylePrompt": "Polished cinematic stylized 3D animated film aesthetic, rich Indian narrative cinema, detailed cloth micro-textures, expressive Indian character design, soft cinematic global illumination, physically plausible rim lighting, controlled shallow depth of field, premium feature-animation composition.",

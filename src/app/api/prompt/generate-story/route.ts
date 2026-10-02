@@ -31,6 +31,7 @@ export async function POST(req: NextRequest) {
       storyText,
       narrationMode,
       narratorTone,
+      shotPlanningMode,
       provider = 'openai',
       model,
       apiKey: customApiKey,
@@ -41,6 +42,7 @@ export async function POST(req: NextRequest) {
       userStoryText: storyText,
       narrationMode,
       narratorTone,
+      shotPlanningMode,
     });
 
     // 2. Resolve API key
@@ -208,6 +210,8 @@ export async function POST(req: NextRequest) {
     } catch (parseErr: any) {
       throw new Error(`Model returned invalid JSON format: ${parseErr.message}`);
     }
+    parsed.project = parsed.project || {};
+    parsed.project.shotPlanningMode = shotPlanningMode === 'MULTI_SHOT' ? 'MULTI_SHOT' : 'SCENE_AS_SHOT';
 
     // 5. Validate schema
     const validation = validateStoryFlowJson(parsed);

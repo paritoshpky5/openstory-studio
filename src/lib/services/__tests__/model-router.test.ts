@@ -4,9 +4,10 @@ import { ModelRouter, RouteRequirements } from '../model-router';
 import { JobType } from '@/schemas/job.schema';
 
 describe('ModelRouter - Quality Gate & Economic Routing', () => {
+  const testModelIds = ['test-cheap-model', 'test-premium-model', 'test-mid-model'];
+
   beforeAll(async () => {
-    // Clear out existing model registry items
-    await prisma.modelRegistryItem.deleteMany();
+    await prisma.modelRegistryItem.deleteMany({ where: { id: { in: testModelIds } } });
 
     // Insert controlled mock data
     await prisma.modelRegistryItem.createMany({
@@ -58,7 +59,7 @@ describe('ModelRouter - Quality Gate & Economic Routing', () => {
   });
 
   afterAll(async () => {
-    await prisma.modelRegistryItem.deleteMany();
+    await prisma.modelRegistryItem.deleteMany({ where: { id: { in: testModelIds } } });
   });
 
   it('routes BACKGROUND shots to the cheapest capable model that passes a low quality gate', async () => {

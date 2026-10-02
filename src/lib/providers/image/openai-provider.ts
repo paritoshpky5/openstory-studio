@@ -1,4 +1,6 @@
 import { ImageProvider, ModelDefinition } from '../base-provider';
+import fs from 'fs';
+import path from 'path';
 
 export class OpenAIImageProvider extends ImageProvider {
   readonly providerName = 'OPENAI';
@@ -14,9 +16,9 @@ export class OpenAIImageProvider extends ImageProvider {
   getSupportedModels(): ModelDefinition[] {
     return [
       {
-        id: 'dall-e-3',
+        id: 'gpt-image-1',
         provider: 'OPENAI',
-        displayName: 'OpenAI DALL·E 3',
+        displayName: 'OpenAI GPT Image 1',
         type: 'IMAGE',
         channel: 'DIRECT_API',
         capabilities: {
@@ -40,9 +42,9 @@ export class OpenAIImageProvider extends ImageProvider {
   private mapSize(aspectRatio?: string): string {
     switch (aspectRatio) {
       case '16:9':
-        return '1792x1024';
+        return '1536x1024';
       case '9:16':
-        return '1024x1792';
+        return '1024x1536';
       case '1:1':
       default:
         return '1024x1024';
@@ -54,41 +56,61 @@ export class OpenAIImageProvider extends ImageProvider {
     prompt: string,
     negativePrompt?: string,
     settings: any = {},
-    _referencePaths?: string[]
+    referencePaths?: string[]
   ): Promise<{ providerJobId?: string; buffer?: Buffer; url?: string }> {
-    if (!this.apiKey || this.apiKey === 'mock' || this.apiKey === 'placeholder') {
+    if (this.apiKey === 'mock' || (!this.apiKey && process.env.OPENSTORY_DEMO_MODE === 'true')) {
       const buffer = this.createMockImageBuffer('OPENAI', modelId, prompt, settings);
       return { buffer };
     }
+    if (!this.apiKey || this.apiKey === 'placeholder') {
+      throw new Error('OPENAI_API_KEY is not configured. Use Free Web upload mode or explicitly enable a test provider.');
+    }
 
-    const payload = {
-      model: modelId || 'dall-e-3',
-      prompt,
-      n: 1,
-      size: this.mapSize(settings.aspectRatio),
-      quality: settings.quality === 'hd' ? 'hd' : 'standard',
-      response_format: 'b64_json',
-    };
-
-    const response = await fetch(this.endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${this.apiKey}`,
-      },
-      body: JSON.stringify(payload),
-    });
+    const activeModel = modelId === 'dall-e-3' ? 'gpt-image-1' : (modelId || 'gpt-image-1');
+    const fullPrompt = negativePrompt ? `${prompt}\nAvoid: ${negativePrompt}` : prompt;
+    let response: Response;
+    const usableReferences = (referencePaths || []).filter((referencePath) => fs.existsSync(referencePath));
+    if (usableReferences.length > 0) {
+      const form = new FormData();
+      form.append('model', activeModel);
+      form.append('prompt', fullPrompt);
+      form.append('size', this.mapSize(settings.aspectRatio));
+      form.append('quality', settings.quality === 'hd' ? 'high' : (settings.quality || 'auto'));
+      usableReferences.slice(0, 4).forEach((referencePath, index) => {
+        const extension = path.extname(referencePath).toLowerCase();
+        const mimeType = extension === '.jpg' || extension === '.jpeg' ? 'image/jpeg' : 'image/png';
+        form.append('image[]', new Blob([fs.readFileSync(referencePath)], { type: mimeType }), `reference_${index}${extension || '.png'}`);
+      });
+      response = await fetch('https://api.openai.com/v1/images/edits', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${this.apiKey}` },
+        body: form,
+      });
+    } else {
+      response = await fetch(this.endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.apiKey}` },
+        body: JSON.stringify({
+          model: activeModel,
+          prompt: fullPrompt,
+          n: 1,
+          size: this.mapSize(settings.aspectRatio),
+          quality: settings.quality === 'hd' ? 'high' : (settings.quality || 'auto'),
+          output_format: 'png',
+        }),
+      });
+    }
 
     if (!response.ok) {
       const err = await response.text();
-      throw new Error(`OpenAI DALL·E API error (${response.status}): ${err}`);
+      throw new Error(`OpenAI Image API error (${response.status}): ${err}`);
     }
 
     const data = await response.json();
     const b64Json = data.data?.[0]?.b64_json;
 
     if (!b64Json) {
-      throw new Error('OpenAI DALL·E returned no image data');
+      throw new Error('OpenAI Image API returned no image data');
     }
 
     const buffer = Buffer.from(b64Json, 'base64');
@@ -110,7 +132,7 @@ export class OpenAIImageProvider extends ImageProvider {
         <rect width="100%" height="100%" fill="url(#bg)" />
         <rect x="20" y="20" width="${width - 40}" height="${height - 40}" rx="12" fill="none" stroke="#a855f7" stroke-width="2" stroke-dasharray="8 4" opacity="0.4" />
         <text x="50" y="70" font-family="system-ui, sans-serif" font-size="20" font-weight="bold" fill="#c084fc">[MOCK / PREVIEW] ${provider} — ${modelId}</text>
-        <text x="50" y="110" font-family="system-ui, sans-serif" font-size="14" fill="#e9d5ff">DALL·E 3 | Aspect: ${settings.aspectRatio || '16:9'}</text>
+        <text x="50" y="110" font-family="system-ui, sans-serif" font-size="14" fill="#e9d5ff">GPT Image | Aspect: ${settings.aspectRatio || '16:9'}</text>
         <foreignObject x="50" y="140" width="${width - 100}" height="${height - 200}">
           <div xmlns="http://www.w3.org/1999/xhtml" style="color: #f3e8ff; font-family: system-ui, sans-serif; font-size: 14px; line-height: 1.5; word-wrap: break-word;">
             <p><strong>Compiled Prompt:</strong></p>

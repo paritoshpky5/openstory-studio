@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { VideoJobOrchestrator } from '@/lib/services/video-job-orchestrator';
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const jobId = params.id;
     const job = await VideoJobOrchestrator.checkJobStatus(jobId);

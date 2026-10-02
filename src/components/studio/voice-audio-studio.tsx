@@ -28,7 +28,7 @@ interface VoiceAudioStudioProps {
 
 export function VoiceAudioStudio({ projectId, project, onRefresh }: VoiceAudioStudioProps) {
   const [voices, setVoices] = useState<any[]>([]);
-  const [selectedVoice, setSelectedVoice] = useState<string>('meera');
+  const [selectedVoice, setSelectedVoice] = useState<string>('shubh');
   const [testText, setTestText] = useState<string>('महाराजा विक्रमादित्य ने ₹500 का पुरस्कार दिया और धर्म की रक्षा का संकल्प लिया।');
   const [previewAudioUrl, setPreviewAudioUrl] = useState<string | null>(null);
   const [isPlayingPreview, setIsPlayingPreview] = useState<boolean>(false);
@@ -120,7 +120,7 @@ export function VoiceAudioStudio({ projectId, project, onRefresh }: VoiceAudioSt
       for (const char of project.characters) {
         initial[char.id] = {
           provider: char.voiceProvider || 'SARVAM',
-          voiceId: char.voiceId || (char.role === 'HERO' ? 'arvind' : 'meera'),
+          voiceId: char.voiceId || 'shubh',
         };
       }
       setCharacterVoices(initial);
@@ -215,7 +215,7 @@ export function VoiceAudioStudio({ projectId, project, onRefresh }: VoiceAudioSt
           assetType: 'NARRATION',
           text: textToSpeak,
           provider: 'SARVAM',
-          voiceId: 'meera',
+          voiceId: 'shubh',
           masterAudio: true,
           forceRegeneration: true,
         }),
@@ -407,7 +407,7 @@ export function VoiceAudioStudio({ projectId, project, onRefresh }: VoiceAudioSt
           {project?.characters?.map((char: any) => {
             const currentCasting = characterVoices[char.id] || {
               provider: char.voiceProvider || 'SARVAM',
-              voiceId: char.voiceId || 'meera',
+              voiceId: char.voiceId || 'shubh',
             };
             const isSaving = savingCharVoice === char.id;
 

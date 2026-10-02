@@ -58,7 +58,7 @@ flowchart LR
 | 🎙️ **Solo Storyteller (कथावाचक) Mode** | Switch between single master voiceover storytelling or multi-character dramatic dialogue. |
 | 🖼️ **Shot-by-Shot Image Studio** | Generate 3–8 second scenes individually. Approve candidate takes and promote them to **Approved Production Frames** before animating. |
 | 🎥 **Image-to-Video Engine** | Animate approved frames with controlled camera movements (*Slow Dolly In*, *Pan*, *Tilt*, *Orbit*) and motion dynamics via **Kling AI** & **Seedance**. |
-| 🎙️ **Hindi Voice Lab** | Native Hindi TTS powered by **Sarvam AI (`bulbul:v1`)** & **ElevenLabs**. Automatic number-to-Devanagari translation, currency conversions, and pronunciation dictionaries. |
+| 🎙️ **Hindi Voice Lab** | Native Hindi TTS powered by **Sarvam AI (`bulbul:v3`)** & **ElevenLabs**. Automatic number-to-Devanagari translation, currency conversions, and pronunciation dictionaries. |
 | 👄 **Video Lip Sync** | Automated character lip sync via **SyncLabs** with a built-in local FFmpeg fallback for dialogue scenes. |
 | 🎚️ **5-Stem Audio Mixer & Ducking** | Dedicated stems for *Dialogue*, *Narration*, *Ambience*, *SFX*, and *Music*. Features a frame-accurate **Audio Ducking Engine** that automatically lowers background music when characters speak. |
 | 📝 **Devanagari Subtitle Burner** | Automatically generates word-timed SRT subtitles and burns readable Hindi captions directly into the video stream. |

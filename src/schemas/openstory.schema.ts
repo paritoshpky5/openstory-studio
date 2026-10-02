@@ -11,6 +11,7 @@ export const ProjectMetadataSchema = z.object({
   fps: z.number().int().min(12).max(60).default(24),
   targetLanguage: z.string().default('hi-IN'),
   budgetLimit: z.number().positive().optional().nullable(),
+  shotPlanningMode: z.enum(['SCENE_AS_SHOT', 'MULTI_SHOT']).default('SCENE_AS_SHOT'),
 });
 
 export const OpenStoryProjectSchema = z.object({

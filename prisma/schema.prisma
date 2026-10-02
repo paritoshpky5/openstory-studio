@@ -17,6 +17,7 @@ model Project {
   schemaVersion   String   @default("1.0.0")
   currentPhase    String   @default("STORY_IMPORT")
   budgetLimit     Float?
+  shotPlanningMode String  @default("SCENE_AS_SHOT") // SCENE_AS_SHOT, MULTI_SHOT
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 

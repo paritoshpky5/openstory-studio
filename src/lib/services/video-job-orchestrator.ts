@@ -4,6 +4,7 @@ import prisma from '@/lib/db/prisma';
 import { JobManager } from './job-manager';
 import { getVideoProvider } from '@/lib/providers/video';
 import { PricingCalculator } from './pricing-calculator';
+import { resolveStoredMediaPath } from '@/lib/storage/project-storage';
 
 export interface SubmitVideoRequest {
   projectId: string;
@@ -45,10 +46,11 @@ export class VideoJobOrchestrator {
     // Submit to provider
     try {
       const provider = getVideoProvider(req.provider);
+      const resolvedReferencePath = resolveStoredMediaPath(req.projectId, req.imageReferencePath);
       const res = await provider.generateVideo(
         req.modelId,
         req.prompt,
-        req.imageReferencePath,
+        resolvedReferencePath,
         req.settings
       );
 
@@ -145,7 +147,7 @@ export class VideoJobOrchestrator {
         const res = await provider.generateVideo(
           job.modelId,
           prompt,
-          settings.imageReferencePath,
+          resolveStoredMediaPath(job.projectId, settings.imageReferencePath),
           settings
         );
 

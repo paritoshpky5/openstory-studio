@@ -15,6 +15,7 @@ dist/
 *.sqlite-journal
 *.db
 *.db-journal
+*.bak
 data/
 logs/
 

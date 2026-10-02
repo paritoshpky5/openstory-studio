@@ -38,6 +38,66 @@ export class SyncLabsLipSyncProvider extends LipSyncProvider {
     return path.join(process.cwd(), 'data', 'projects', filePath);
   }
 
+  private async uploadAsset(filePath: string, contentType: string, apiKey: string): Promise<string> {
+    const stat = fs.statSync(filePath);
+    const fileName = path.basename(filePath);
+
+    // 1. Request presigned URL
+    const uploadRes = await fetch('https://api.sync.so/v2/assets/upload', {
+      method: 'POST',
+      headers: {
+        'x-api-key': apiKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        fileName,
+        contentType,
+        size: stat.size,
+      }),
+    });
+
+    if (!uploadRes.ok) {
+      const err = await uploadRes.text();
+      throw new Error(`SyncLabs upload step 1 failed (${uploadRes.status}): ${err}`);
+    }
+
+    const { uploadUrl, url: canonicalUrl } = await uploadRes.json();
+
+    // 2. PUT file bytes
+    const fileBuffer = fs.readFileSync(filePath);
+    const putRes = await fetch(uploadUrl, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': contentType,
+        'Content-Length': stat.size.toString(),
+      },
+      body: fileBuffer,
+    });
+
+    if (!putRes.ok) {
+      const err = await putRes.text();
+      throw new Error(`SyncLabs upload step 2 failed (${putRes.status}): ${err}`);
+    }
+
+    // 3. Register asset
+    const regRes = await fetch('https://api.sync.so/v2/assets', {
+      method: 'POST',
+      headers: {
+        'x-api-key': apiKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ url: canonicalUrl }),
+    });
+
+    if (!regRes.ok) {
+      const err = await regRes.text();
+      throw new Error(`SyncLabs upload step 3 failed (${regRes.status}): ${err}`);
+    }
+
+    const regData = await regRes.json();
+    return regData.id;
+  }
+
   async syncLips(
     modelId: string,
     videoPath: string,
@@ -45,13 +105,12 @@ export class SyncLabsLipSyncProvider extends LipSyncProvider {
     settings: any = {}
   ): Promise<{ providerJobId?: string; buffer?: Buffer; url?: string }> {
     const apiKey = process.env.SYNCLABS_API_KEY;
+    const absVideoPath = this.resolvePath(videoPath);
+    const absAudioPath = this.resolvePath(audioPath);
 
     // Check for API key vs local mock execution
     if (!apiKey) {
       console.warn('[SyncLabsLipSyncProvider] SYNCLABS_API_KEY not found. Using local FFmpeg audio-video muxing mock.');
-
-      const absVideoPath = this.resolvePath(videoPath);
-      const absAudioPath = this.resolvePath(audioPath);
 
       // Verify input files exist
       if (!fs.existsSync(absVideoPath)) {
@@ -104,9 +163,15 @@ export class SyncLabsLipSyncProvider extends LipSyncProvider {
       return { buffer };
     }
 
-    // Direct Cloud API implementation
+    // Direct Cloud API implementation (Sync Labs v2)
     try {
-      const response = await fetch('https://api.synclabs.so/lipsync', {
+      if (!fs.existsSync(absVideoPath)) throw new Error(`Video file not found: ${absVideoPath}`);
+      if (!fs.existsSync(absAudioPath)) throw new Error(`Audio file not found: ${absAudioPath}`);
+
+      const videoAssetId = await this.uploadAsset(absVideoPath, 'video/mp4', apiKey);
+      const audioAssetId = await this.uploadAsset(absAudioPath, 'audio/mpeg', apiKey);
+
+      const response = await fetch('https://api.sync.so/v2/generate', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -114,15 +179,19 @@ export class SyncLabsLipSyncProvider extends LipSyncProvider {
         },
         body: JSON.stringify({
           model: modelId || 'sync-1.6.0',
-          videoUrl: settings.videoUrl || videoPath,
-          audioUrl: settings.audioUrl || audioPath,
-          synergize: true,
+          input: [
+            { type: 'video', assetId: videoAssetId },
+            { type: 'audio', assetId: audioAssetId }
+          ],
+          options: {
+            synergize: true
+          }
         }),
       });
 
       if (!response.ok) {
         const errText = await response.text();
-        throw new Error(`SyncLabs error (${response.status}): ${errText}`);
+        throw new Error(`SyncLabs generate error (${response.status}): ${errText}`);
       }
 
       const data = await response.json();
@@ -142,7 +211,7 @@ export class SyncLabsLipSyncProvider extends LipSyncProvider {
     }
 
     try {
-      const response = await fetch(`https://api.synclabs.so/lipsync/${providerJobId}`, {
+      const response = await fetch(`https://api.sync.so/v2/generate/${providerJobId}`, {
         headers: { 'x-api-key': apiKey },
       });
 
@@ -152,10 +221,10 @@ export class SyncLabsLipSyncProvider extends LipSyncProvider {
 
       const data = await response.json();
       if (data.status === 'COMPLETED') {
-        return { status: 'COMPLETED', progress: 1.0, url: data.url };
+        return { status: 'COMPLETED', progress: 1.0, url: data.outputUrl || data.url };
       }
       if (data.status === 'FAILED') {
-        return { status: 'FAILED', error: data.error || 'Lip sync failed on provider' };
+        return { status: 'FAILED', error: data.error?.message || data.error || 'Lip sync failed on provider' };
       }
 
       return { status: 'PROCESSING', progress: 0.5 };

@@ -31,12 +31,13 @@ export class ElevenLabsAudioProvider extends AudioProvider {
   ): Promise<{ buffer: Buffer }> {
     const apiKey = process.env.ELEVENLABS_API_KEY;
 
-    if (!apiKey) {
+    if (!apiKey && process.env.OPENSTORY_DEMO_MODE === 'true') {
       console.warn('[ElevenLabsAudioProvider] ELEVENLABS_API_KEY not found. Using local mock audio generation.');
       const estimatedDuration = Math.max(1.5, Math.min(15.0, text.length / 15.0));
       const buffer = generateMockWavBuffer(estimatedDuration, 520);
       return { buffer };
     }
+    if (!apiKey) throw new Error('ELEVENLABS_API_KEY is not configured. Use Free Web audio upload mode instead.');
 
     const actualVoiceId = voiceId || '21m00Tcm4TlvDq8ikWAM'; // Default Rachel voice or configured voice
     const stability = settings.stability ?? 0.5;

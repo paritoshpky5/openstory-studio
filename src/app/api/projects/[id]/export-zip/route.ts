@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ProjectArchiveService } from '@/lib/services/project-archive-service';
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const projectId = params.id;
     const { zipBuffer, filename } = await ProjectArchiveService.exportProjectZip(projectId);

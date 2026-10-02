@@ -39,21 +39,13 @@ describe('Video Providers (Kling & Seedance)', () => {
       expect(cost).toBe(0.25); // 5s * 0.05
     });
 
-    it('simulates async image-to-video submission and status polling', async () => {
-      const { providerJobId } = await kling.generateVideo(
+    it('fails clearly instead of fabricating a video when credentials are missing', async () => {
+      await expect(kling.generateVideo(
         'kling-v1',
         'Camera slowly pushes in on the king sitting on the throne',
         testImagePath,
         { duration: 5 }
-      );
-
-      expect(providerJobId).toBeDefined();
-      expect(providerJobId.startsWith('kling_mock_')).toBe(true);
-
-      // Check immediate status
-      const statusRes = await kling.checkStatus(providerJobId);
-      expect(statusRes.status).toBe('PROCESSING');
-      expect(statusRes.progress).toBeDefined();
+      )).rejects.toThrow(/KLING_API_KEY.*KLING_API_SECRET/);
     });
   });
 
@@ -70,20 +62,13 @@ describe('Video Providers (Kling & Seedance)', () => {
       expect(cost).toBe(0.60); // 5s * 0.12
     });
 
-    it('simulates async image-to-video submission and status polling', async () => {
-      const { providerJobId } = await seedance.generateVideo(
+    it('fails clearly instead of fabricating a video when credentials are missing', async () => {
+      await expect(seedance.generateVideo(
         'seedance-v1',
         'Expressive dialogue acting with subtle eye contact',
         testImagePath,
         { duration: 5 }
-      );
-
-      expect(providerJobId).toBeDefined();
-      expect(providerJobId.startsWith('seedance_mock_')).toBe(true);
-
-      // Check immediate status
-      const statusRes = await seedance.checkStatus(providerJobId);
-      expect(statusRes.status).toBe('PROCESSING');
+      )).rejects.toThrow(/SEEDANCE_API_KEY/);
     });
   });
 });

@@ -200,6 +200,8 @@ export function VideoAnimationStudio({ projectId, project, onRefresh }: VideoAni
       setActionLoading(assetId);
       const res = await fetch(`/api/projects/${projectId}/assets/${assetId}/approve`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'APPROVE', makeActive: true }),
       });
       const data = await res.json();
       if (data.success) {

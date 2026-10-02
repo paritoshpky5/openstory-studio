@@ -132,12 +132,26 @@ export function SceneImageStudio({ projectId, project, onRefresh }: SceneImageSt
     }
   };
 
-  const handleCopyPrompt = () => {
+  const handleCopyPrompt = async () => {
     if (!selectedScene) return;
-    const promptText = `Indian cinematic 3D animated scene. ${selectedScene.summary}. Location: ${selectedScene.location} (${selectedScene.environment}). Time: ${selectedScene.timeOfDay}, Lighting: ${selectedScene.lighting}. Mood: ${selectedScene.mood}. Framing: ${selectedScene.shotType || 'Medium shot'}, Camera: ${selectedScene.cameraAngle || 'Eye level'}. Style: ${project.styleBible?.masterStylePrompt || 'cinematic stylized 3D animation, rich textures, soft global illumination'}. Negative: ${project.styleBible?.negativePrompt || 'photorealistic live action, 2d sketch, deformed, blurry'}`;
-    navigator.clipboard.writeText(promptText);
-    setCopiedPrompt(true);
-    setTimeout(() => setCopiedPrompt(false), 2500);
+    try {
+      const res = await fetch(`/api/projects/${projectId}/compile-prompt`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sceneId: selectedSceneId, provider: selectedProvider, type: 'IMAGE' }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || 'Prompt compilation failed');
+      const referenceNote = data.compiled.referenceImagePaths?.length
+        ? `\n\nREFERENCE IMAGES: Upload the ${data.compiled.referenceImagePaths.length} approved character reference image(s) shown in OpenStory Studio to the web generator.`
+        : '';
+      const promptText = `${data.compiled.positivePrompt}\n\nNEGATIVE PROMPT: ${data.compiled.negativePrompt}${referenceNote}`;
+      await navigator.clipboard.writeText(promptText);
+      setCopiedPrompt(true);
+      setTimeout(() => setCopiedPrompt(false), 2500);
+    } catch (error: any) {
+      alert(error.message || 'Could not copy prompt');
+    }
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {

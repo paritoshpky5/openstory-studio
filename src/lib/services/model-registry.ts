@@ -34,9 +34,9 @@ export class ModelRegistryService {
     },
     // --- Google Gemini Models ---
     {
-      id: 'imagen-3.0-generate-001',
+      id: 'gemini-3.1-flash-image',
       provider: 'GEMINI',
-      displayName: 'Imagen 3.0',
+      displayName: 'Gemini 3.1 Flash Image',
       type: 'IMAGE',
       channel: 'DIRECT_API',
       capabilities: { maxResolution: '1024x1024' },
@@ -44,9 +44,9 @@ export class ModelRegistryService {
     },
     // --- OpenAI Models ---
     {
-      id: 'dall-e-3',
+      id: 'gpt-image-1',
       provider: 'OPENAI',
-      displayName: 'DALL-E 3',
+      displayName: 'GPT Image 1',
       type: 'IMAGE',
       channel: 'DIRECT_API',
       capabilities: { maxResolution: '1024x1024' },
@@ -74,9 +74,9 @@ export class ModelRegistryService {
     },
     // --- Audio Models ---
     {
-      id: 'sarvam-bulbul-v1',
+      id: 'sarvam-bulbul-v3',
       provider: 'SARVAM',
-      displayName: 'Sarvam Bulbul TTS',
+      displayName: 'Sarvam Bulbul v3 TTS',
       type: 'AUDIO',
       channel: 'DIRECT_API',
       capabilities: { supportsLipSync: false },

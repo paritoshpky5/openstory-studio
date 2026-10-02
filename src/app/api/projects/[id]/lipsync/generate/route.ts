@@ -4,6 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import prisma from '@/lib/db/prisma';
 import { getLipSyncProvider } from '@/lib/providers/lipsync';
+import { projectBoundaryStatus, requireProjectAsset, requireProjectScene } from '@/lib/security/project-boundary';
 
 const lipSyncSchema = z.object({
   sceneId: z.string(),
@@ -13,28 +14,26 @@ const lipSyncSchema = z.object({
   modelId: z.string().optional().default('sync-1.6.0'),
 });
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const projectId = params.id;
     const body = await request.json();
     const validated = lipSyncSchema.parse(body);
 
-    // Fetch video asset and audio asset
-    const videoAsset = await prisma.assetVersion.findUnique({
-      where: { id: validated.videoAssetId },
-    });
-    const audioAsset = await prisma.assetVersion.findUnique({
-      where: { id: validated.audioAssetId },
-    });
+    await requireProjectScene(projectId, validated.sceneId);
 
-    if (!videoAsset) {
-      return NextResponse.json({ success: false, error: 'Video asset not found' }, { status: 404 });
+    // Fetch video asset and audio asset
+    const videoAsset = await requireProjectAsset(projectId, validated.videoAssetId);
+    const audioAsset = await requireProjectAsset(projectId, validated.audioAssetId);
+    if (videoAsset.sceneId !== validated.sceneId || audioAsset.sceneId !== validated.sceneId) {
+      return NextResponse.json({ success: false, error: 'Lip-sync assets must belong to the selected scene' }, { status: 400 });
     }
-    if (!audioAsset) {
-      return NextResponse.json({ success: false, error: 'Audio asset not found' }, { status: 404 });
+    if (!['VIDEO', 'LIPSYNC'].includes(videoAsset.assetType)) {
+      return NextResponse.json({ success: false, error: 'Selected video asset has an invalid type' }, { status: 400 });
+    }
+    if (!['NARRATION', 'DIALOGUE'].includes(audioAsset.assetType)) {
+      return NextResponse.json({ success: false, error: 'Selected audio asset has an invalid type' }, { status: 400 });
     }
 
     const provider = getLipSyncProvider(validated.provider);
@@ -94,7 +93,7 @@ export async function POST(
     console.error('[API generate-lipsync] Error:', error);
     return NextResponse.json(
       { success: false, error: error.message || 'Lip sync generation failed' },
-      { status: 500 }
+      { status: projectBoundaryStatus(error) }
     );
   }
 }

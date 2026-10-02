@@ -15,6 +15,8 @@ const SUPPORTED_KEYS = [
   { key: 'ELEVENLABS_API_KEY', label: 'ElevenLabs Multilingual', category: 'AUDIO' },
   { key: 'SYNCLABS_API_KEY', label: 'SyncLabs Lip Sync', category: 'LIPSYNC' },
 ];
+const SUPPORTED_KEY_NAMES = new Set(SUPPORTED_KEYS.map((item) => item.key));
+const SUPPORTED_WORKFLOWS = new Set(['HYBRID', 'FREE_WEB', 'DIRECT_API']);
 
 function getSettingsFilePath(): string {
   const dataDir = path.join(process.cwd(), 'data');
@@ -118,8 +120,19 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const incomingKeys: Record<string, string> = body.keys || {};
+    const incomingKeys: Record<string, unknown> = body.keys || {};
     const defaultWorkflow: string = body.defaultWorkflow || 'HYBRID';
+    if (!SUPPORTED_WORKFLOWS.has(defaultWorkflow)) {
+      return NextResponse.json({ success: false, error: 'Unsupported default workflow' }, { status: 400 });
+    }
+
+    const unsupportedKeys = Object.keys(incomingKeys).filter((key) => !SUPPORTED_KEY_NAMES.has(key));
+    if (unsupportedKeys.length > 0) {
+      return NextResponse.json(
+        { success: false, error: `Unsupported settings key: ${unsupportedKeys.join(', ')}` },
+        { status: 400 }
+      );
+    }
 
     const saved = loadSavedSettings();
     const updatedKeys = { ...saved.keys };

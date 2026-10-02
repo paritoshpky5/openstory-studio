@@ -1,12 +1,11 @@
 import { ImageProvider, ModelDefinition } from '../base-provider';
+import fs from 'fs';
+import path from 'path';
 
 export class GeminiImageProvider extends ImageProvider {
   readonly providerName = 'GEMINI';
 
   private apiKey: string;
-  private endpoint =
-    'https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-001:predict';
-
   constructor(apiKey?: string) {
     super();
     this.apiKey = apiKey || process.env.GEMINI_API_KEY || '';
@@ -15,9 +14,9 @@ export class GeminiImageProvider extends ImageProvider {
   getSupportedModels(): ModelDefinition[] {
     return [
       {
-        id: 'imagen-3.0-generate-001',
+        id: 'gemini-3.1-flash-image',
         provider: 'GEMINI',
-        displayName: 'Google Imagen 3',
+        displayName: 'Gemini 3.1 Flash Image',
         type: 'IMAGE',
         channel: 'DIRECT_API',
         capabilities: {
@@ -56,24 +55,38 @@ export class GeminiImageProvider extends ImageProvider {
     prompt: string,
     negativePrompt?: string,
     settings: any = {},
-    _referencePaths?: string[]
+    referencePaths?: string[]
   ): Promise<{ providerJobId?: string; buffer?: Buffer; url?: string }> {
-    if (!this.apiKey || this.apiKey === 'mock' || this.apiKey === 'placeholder') {
+    if (this.apiKey === 'mock' || (!this.apiKey && process.env.OPENSTORY_DEMO_MODE === 'true')) {
       const buffer = this.createMockImageBuffer('GEMINI', modelId, prompt, settings);
       return { buffer };
     }
+    if (!this.apiKey || this.apiKey === 'placeholder') {
+      throw new Error('GEMINI_API_KEY is not configured. Use Free Web upload mode or explicitly enable a test provider.');
+    }
+
+    const parts: any[] = [];
+    for (const referencePath of referencePaths || []) {
+      if (!fs.existsSync(referencePath)) continue;
+      const extension = path.extname(referencePath).toLowerCase();
+      const mimeType = extension === '.jpg' || extension === '.jpeg'
+        ? 'image/jpeg'
+        : extension === '.webp' ? 'image/webp' : 'image/png';
+      parts.push({ inlineData: { mimeType, data: fs.readFileSync(referencePath).toString('base64') } });
+    }
+    const fullPrompt = negativePrompt ? `${prompt}\nAvoid: ${negativePrompt}` : prompt;
+    parts.push({ text: fullPrompt });
 
     const payload = {
-      instances: [{ prompt }],
-      parameters: {
-        sampleCount: 1,
-        aspectRatio: this.mapAspectRatio(settings.aspectRatio),
-        personGeneration: 'ALLOW_ADULT',
-        outputMimeType: 'image/jpeg',
+      contents: [{ role: 'user', parts }],
+      generationConfig: {
+        responseModalities: ['IMAGE'],
+        imageConfig: { aspectRatio: this.mapAspectRatio(settings.aspectRatio) },
       },
     };
 
-    const response = await fetch(this.endpoint, {
+    const activeModel = modelId || 'gemini-3.1-flash-image';
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1/models/${activeModel}:generateContent`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -84,17 +97,13 @@ export class GeminiImageProvider extends ImageProvider {
 
     if (!response.ok) {
       const errText = await response.text();
-      throw new Error(`Google Imagen 3 API error (${response.status}): ${errText}`);
+      throw new Error(`Gemini Image API error (${response.status}): ${errText}`);
     }
 
     const data = await response.json();
-    const prediction = data.predictions?.[0];
-
-    if (!prediction || !prediction.bytesBase64Encoded) {
-      throw new Error('Google Imagen 3 API returned no image data');
-    }
-
-    const buffer = Buffer.from(prediction.bytesBase64Encoded, 'base64');
+    const imagePart = data.candidates?.[0]?.content?.parts?.find((part: any) => part.inlineData?.data);
+    if (!imagePart?.inlineData?.data) throw new Error('Gemini Image API returned no image data');
+    const buffer = Buffer.from(imagePart.inlineData.data, 'base64');
     return { buffer };
   }
 
@@ -113,7 +122,7 @@ export class GeminiImageProvider extends ImageProvider {
         <rect width="100%" height="100%" fill="url(#bg)" />
         <rect x="20" y="20" width="${width - 40}" height="${height - 40}" rx="12" fill="none" stroke="#10b981" stroke-width="2" stroke-dasharray="8 4" opacity="0.4" />
         <text x="50" y="70" font-family="system-ui, sans-serif" font-size="20" font-weight="bold" fill="#34d399">[MOCK / PREVIEW] ${provider} — ${modelId}</text>
-        <text x="50" y="110" font-family="system-ui, sans-serif" font-size="14" fill="#6ee7b7">Google Imagen 3 | Aspect: ${settings.aspectRatio || '16:9'}</text>
+        <text x="50" y="110" font-family="system-ui, sans-serif" font-size="14" fill="#6ee7b7">Gemini Image | Aspect: ${settings.aspectRatio || '16:9'}</text>
         <foreignObject x="50" y="140" width="${width - 100}" height="${height - 200}">
           <div xmlns="http://www.w3.org/1999/xhtml" style="color: #d1fae5; font-family: system-ui, sans-serif; font-size: 14px; line-height: 1.5; word-wrap: break-word;">
             <p><strong>Compiled Prompt:</strong></p>
