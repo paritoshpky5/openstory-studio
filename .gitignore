@@ -1,0 +1,32 @@
+# Node & Dependencies
+node_modules/
+/.pnp
+.pnp.js
+
+# Next.js build output
+.next/
+out/
+build/
+dist/
+*.tsbuildinfo
+
+# Local database & logs
+*.sqlite
+*.sqlite-journal
+*.db
+*.db-journal
+data/
+logs/
+
+# Testing
+coverage/
+
+# Environment variables
+.env
+.env.local
+.env.production
+.env*.local
+
+# OS
+.DS_Store
+Thumbs.db

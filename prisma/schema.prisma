@@ -1,0 +1,289 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Project {
+  id              String   @id @default(cuid())
+  name            String
+  description     String?
+  aspectRatio     String   @default("16:9")
+  fps             Int      @default(24)
+  targetLanguage  String   @default("hi-IN")
+  schemaVersion   String   @default("1.0.0")
+  currentPhase    String   @default("STORY_IMPORT")
+  budgetLimit     Float?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  styleBible      StyleBible?
+  characters      Character[]
+  scenes          Scene[]
+  assetVersions   AssetVersion[]
+  generationJobs  GenerationJob[]
+  pronunciations  PronunciationRule[]
+  benchmarks      BenchmarkResult[]
+}
+
+model StyleBible {
+  id                 String    @id @default(cuid())
+  projectId          String    @unique
+  project            Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  masterStylePrompt  String
+  characterStyle     String
+  lightingStyle      String
+  renderStyle        String
+  environmentStyle   String
+  colorLanguage      String
+  cameraStyle        String
+  lensStyle          String
+  depthOfFieldStyle  String
+  animationStyle     String
+  materialStyle      String
+  negativePrompt     String
+  aspectRatio        String    @default("16:9")
+  fps                Int       @default(24)
+  isLocked           Boolean   @default(false)
+  lockedAt           DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+}
+
+model Character {
+  id                        String    @id @default(cuid())
+  projectId                 String
+  project                   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name                      String
+  role                      String    @default("PROTAGONIST") // PROTAGONIST, ANTAGONIST, SUPPORTING, EXTRA
+  gender                    String?
+  ageDescription            String
+  faceDescription           String
+  skinDescription           String
+  eyeDescription            String
+  hairDescription           String
+  facialHairDescription     String?
+  bodyDescription           String
+  heightDescription         String?
+  clothingDescription       String
+  footwearDescription       String?
+  accessories               String?
+  personality               String?
+  defaultExpressions        String?
+  consistencyPrompt         String
+  negativeConsistencyPrompt String
+  isLocked                  Boolean   @default(false)
+  lockedAt                  DateTime?
+  voiceProvider             String?   // SARVAM, ELEVENLABS
+  voiceId                   String?
+  voiceSettings             String?   // JSON
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
+
+  references                CharacterReference[]
+  scenes                    SceneCharacter[]
+}
+
+model CharacterReference {
+  id             String    @id @default(cuid())
+  characterId    String
+  character      Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  referenceType  String    // PRIMARY_FACE, PRIMARY_FULL_BODY, FRONT, THREE_QUARTER, SIDE, HAPPY, SAD, ANGRY, WORRIED
+  filePath       String
+  thumbnailPath  String?
+  promptUsed     String?
+  isApproved     Boolean   @default(false)
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+}
+
+model Scene {
+  id                   String   @id @default(cuid())
+  projectId            String
+  project              Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sceneNumber          Int
+  title                String
+  importance           String   @default("NORMAL") // BACKGROUND, NORMAL, IMPORTANT, HERO
+  status               String   @default("NOT_STARTED") // NOT_STARTED, STORYBOARD, STORYBOARD_APPROVED, PRODUCTION_IMAGE, IMAGE_APPROVED, VIDEO_GENERATED, VIDEO_APPROVED, FINAL
+  location             String
+  timeOfDay            String
+  environment          String
+  lighting             String
+  mood                 String
+  summary              String
+  narrationHindi       String?
+  dialogueHindi        String?
+  speakingCharacterId  String?
+  shotType             String?  // WIDE, MEDIUM, CLOSE_UP, EXTREME_CLOSE_UP, OVER_THE_SHOULDER, ESTABLISHING
+  cameraAngle          String?  // EYE_LEVEL, LOW_ANGLE, HIGH_ANGLE, DUTCH_ANGLE
+  cameraMovement       String?  // LOCKED, SLOW_DOLLY_IN, SLOW_DOLLY_OUT, PAN_LEFT, PAN_RIGHT, TILT_UP, TILT_DOWN, ARC_LEFT, ARC_RIGHT, TRACKING_FORWARD, TRACKING_BACKWARD, SUBTLE_HANDHELD
+  motionPreset         String?  // STATIC_PLUS, VERY_SUBTLE, NATURAL, MODERATE, DYNAMIC
+  durationSeconds      Float    @default(4.0)
+  ambiencePrompt       String?
+  sfxPrompt            String?
+  musicMood            String?
+  orderIndex           Int      @default(0)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  characters           SceneCharacter[]
+  shots                Shot[]
+  assetVersions        AssetVersion[]
+  generationJobs       GenerationJob[]
+}
+
+model SceneCharacter {
+  id          String    @id @default(cuid())
+  sceneId     String
+  scene       Scene     @relation(fields: [sceneId], references: [id], onDelete: Cascade)
+  characterId String
+  character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+
+  @@unique([sceneId, characterId])
+}
+
+model Shot {
+  id                   String   @id @default(cuid())
+  sceneId              String
+  scene                Scene    @relation(fields: [sceneId], references: [id], onDelete: Cascade)
+  shotNumber           Int
+  description          String
+  duration             Float    @default(4.0)
+  activeImageVersionId String?
+  activeVideoVersionId String?
+  activeAudioVersionId String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  assetVersions        AssetVersion[]
+}
+
+model AssetVersion {
+  id               String    @id @default(cuid())
+  projectId        String
+  project          Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sceneId          String?
+  scene            Scene?    @relation(fields: [sceneId], references: [id], onDelete: SetNull)
+  shotId           String?
+  shot             Shot?     @relation(fields: [shotId], references: [id], onDelete: SetNull)
+  characterId      String?
+  assetType        String    // STORYBOARD, PRODUCTION_IMAGE, VIDEO, NARRATION, DIALOGUE, LIPSYNC, AMBIENCE, SFX, MUSIC, RENDER
+  provider         String    // FLUX, GEMINI, OPENAI, KLING, SEEDANCE, GROK, VEO, SARVAM, ELEVENLABS, MANUAL
+  modelId          String
+  channel          String    // DIRECT_API, AGGREGATOR_API, WEBSITE_SUBSCRIPTION, LOCAL, MANUAL_IMPORT
+  filePath         String
+  mimeType         String
+  width            Int?
+  height           Int?
+  duration         Float?
+  prompt           String
+  negativePrompt   String?
+  motionPrompt     String?
+  settings         String    // JSON
+  referencePaths   String?   // JSON array of file paths
+  estimatedCost    Float?
+  actualCost       Float?
+  approvalStatus   String    @default("PENDING") // PENDING, APPROVED, REJECTED
+  isActive         Boolean   @default(false)
+  rating           Int?      // 1 to 5
+  rejectionReasons String?   // JSON array
+  qualityMetrics   String?   // JSON
+  createdAt        DateTime  @default(now())
+}
+
+model GenerationJob {
+  id               String    @id @default(cuid())
+  projectId        String
+  project          Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sceneId          String?
+  scene            Scene?    @relation(fields: [sceneId], references: [id], onDelete: SetNull)
+  jobType          String    // IMAGE, VIDEO, AUDIO, LIPSYNC, RENDER
+  status           String    @default("PENDING") // PENDING, SUBMITTED, PROCESSING, COMPLETED, FAILED, CANCELLED
+  provider         String
+  modelId          String
+  channel          String
+  providerJobId    String?
+  idempotencyKey   String    @unique
+  requestPayload   String    // JSON
+  responsePayload  String?   // JSON
+  retryCount       Int       @default(0)
+  maxRetries       Int       @default(3)
+  isPaidGeneration Boolean   @default(true)
+  errorMessage     String?
+  progress         Float     @default(0.0)
+  resultAssetId    String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+}
+
+model ModelRegistryItem {
+  id                  String    @id
+  provider            String
+  modelId             String
+  displayName         String
+  version             String?
+  channel             String    @default("DIRECT_API")
+  type                String    // IMAGE, VIDEO, AUDIO, LIPSYNC
+  enabled             Boolean   @default(true)
+  capabilities        String    // JSON
+  pricing             String    // JSON
+  approvalRate        Float     @default(0.0)
+  totalGenerations    Int       @default(0)
+  approvedGenerations Int       @default(0)
+  averageRetries      Float     @default(1.0)
+  effectiveCost       Float     @default(0.0)
+  lastBenchmarkDate   DateTime?
+  updatedAt           DateTime  @updatedAt
+}
+
+model ProviderChannelConfig {
+  id                      String    @id @default(cuid())
+  channelType             String    // DIRECT_API, AGGREGATOR_API, WEBSITE_SUBSCRIPTION, LOCAL
+  provider                String
+  name                    String
+  monthlySubscriptionCost Float?
+  includedCredits         Float?
+  creditsRemaining        Float?
+  renewalDate             DateTime?
+  costPerCredit           Float?
+  isActive                Boolean   @default(true)
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+}
+
+model BenchmarkResult {
+  id               String    @id @default(cuid())
+  projectId        String?
+  project          Project?  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  benchmarkType    String    // GOLDEN, BLIND
+  assetType        String    // IMAGE, VIDEO, AUDIO
+  category         String
+  candidateLabel   String?   // "Candidate A", "Candidate B"
+  provider         String
+  modelId          String
+  channel          String
+  filePath         String
+  ratings          String    // JSON
+  overallScore     Float
+  generationTimeMs Int?
+  cost             Float?
+  revealed         Boolean   @default(false)
+  createdAt        DateTime  @default(now())
+}
+
+model PronunciationRule {
+  id                 String   @id @default(cuid())
+  projectId          String
+  project            Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  writtenText        String
+  sarvamOverride     String?
+  elevenLabsOverride String?
+  notes              String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@unique([projectId, writtenText])
+}
