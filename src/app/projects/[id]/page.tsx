@@ -192,7 +192,7 @@ export default function ProjectStudioPage() {
     }
   };
 
-  if (loading) {
+  if (loading && !project) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[50vh] space-y-3">
         <RefreshCw className="w-8 h-8 text-amber-500 animate-spin" />
