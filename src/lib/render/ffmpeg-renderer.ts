@@ -201,7 +201,10 @@ export class FFmpegRenderer {
           filterGraph.push(`[a${index}_pre]atrim=duration=${duration}[a${index}]`);
           concatAudioInputs += `[a${index}]`;
         } else {
-          filterGraph.push(`[${audioInputIndexOffset}:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo[a${index}]`);
+          const duration = videoConfig.duration;
+          // apad pads with silence if the audio is shorter than the video.
+          // atrim cuts it if it is longer. This guarantees perfect sync across the concatenated timeline.
+          filterGraph.push(`[${audioInputIndexOffset}:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,apad,atrim=duration=${duration}[a${index}]`);
           concatAudioInputs += `[a${index}]`;
           audioInputIndexOffset++;
         }
@@ -279,3 +282,6 @@ export class FFmpegRenderer {
     });
   }
 }
+
+
+
