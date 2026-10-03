@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import prisma from '@/lib/db/prisma';
 import { VideoJobOrchestrator } from '@/lib/services/video-job-orchestrator';
+import { ProjectService } from '@/lib/services/project-service';
+import { PromptCompiler } from '@/lib/prompt-compiler/prompt-compiler';
 import {
   projectBoundaryStatus,
   requireProjectAsset,
@@ -109,16 +111,54 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
       referenceImagePath = approvedFrame.filePath;
     }
 
-    // 3. Compile Motion Prompt
-    const motionDirectives: string[] = [];
-    if (validated.motionPrompt) {
-      motionDirectives.push(validated.motionPrompt);
-    } else {
-      if (scene.cameraMovement) motionDirectives.push(`Camera movement: ${scene.cameraMovement}`);
-      if (scene.motionPreset) motionDirectives.push(`Character motion: ${scene.motionPreset}`);
-      if (shot?.description || scene.summary) motionDirectives.push(`Action: ${shot?.description || scene.summary}`);
+    // 3. Compile the complete motion prompt automatically when the UI does not
+    // provide an expert override. Direct API mode intentionally has no prompt box.
+    const project = await ProjectService.getProject(projectId);
+    const compilerScene = project?.scenes.find((item) => item.id === scene.id);
+    const compilerShot = compilerScene?.shots.find((item) => item.id === shot?.id) || compilerScene?.shots[0];
+    const effectiveDuration =
+      validated.durationSeconds || shot?.duration || Math.min(8, Math.max(3, speechAsset?.duration || scene.durationSeconds));
+    let compiledMotionPrompt = validated.motionPrompt?.trim() || '';
+    let negativeMotionPrompt = '';
+
+    if (!compiledMotionPrompt && project?.styleBible && compilerScene) {
+      const sceneCharacters = compilerScene.characters.map((item) => item.character as any);
+      const activeReferences = compilerScene.characters.flatMap((item) =>
+        item.character.references
+          .filter((reference) => reference.isActive && reference.isApproved)
+          .map((reference) => ({
+            characterId: item.characterId,
+            filePath: reference.filePath,
+            type: reference.referenceType,
+          }))
+      );
+      const requestedProvider = validated.provider.toUpperCase();
+      const compilerProvider = ['KLING', 'SEEDANCE', 'GROK', 'VEO'].includes(requestedProvider)
+        ? requestedProvider
+        : 'GENERIC';
+      const compiled = PromptCompiler.compileForMotion(
+        {
+          styleBible: project.styleBible as any,
+          characters: sceneCharacters,
+          scene: {
+            ...compilerScene,
+            cameraMovement: validated.cameraMovement || compilerScene.cameraMovement,
+            motionPreset: validated.motionPreset || compilerScene.motionPreset,
+            durationSeconds: effectiveDuration,
+            characterIds: compilerScene.characters.map((item) => item.characterId),
+          } as any,
+          shot: compilerShot as any,
+          activeReferences,
+        },
+        compilerProvider as any
+      );
+      compiledMotionPrompt = compiled.motionPrompt;
+      negativeMotionPrompt = compiled.negativeMotionPrompt;
     }
-    const compiledMotionPrompt = motionDirectives.join('. ') || 'Cinematic character motion and natural camera movement.';
+
+    if (!compiledMotionPrompt) {
+      compiledMotionPrompt = 'Cinematic character motion and natural camera movement with stable identity and anatomy.';
+    }
 
     // 4. Submit Job to Orchestrator
     const job = await VideoJobOrchestrator.submitVideoJob({
@@ -133,7 +173,8 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
         cameraMovement: validated.cameraMovement || scene.cameraMovement || 'LOCKED',
         cameraAngle: validated.cameraAngle || scene.cameraAngle || 'EYE_LEVEL',
         motionPreset: validated.motionPreset || scene.motionPreset || 'NATURAL',
-        duration: validated.durationSeconds || shot?.duration || Math.min(8, Math.max(3, speechAsset?.duration || scene.durationSeconds)),
+        duration: effectiveDuration,
+        negativeMotionPrompt,
         shotId: shot?.id,
       },
       forceRegeneration: validated.forceRegeneration,

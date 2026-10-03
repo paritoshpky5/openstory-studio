@@ -18,14 +18,18 @@ import {
   Copy,
   ExternalLink,
 } from 'lucide-react';
+import type { WorkflowMode } from '@/lib/settings/workflow-mode';
 
 interface SceneImageStudioProps {
   projectId: string;
   project: any;
+  workflowMode: WorkflowMode;
   onRefresh: () => void;
 }
 
-export function SceneImageStudio({ projectId, project, onRefresh }: SceneImageStudioProps) {
+export function SceneImageStudio({ projectId, project, workflowMode, onRefresh }: SceneImageStudioProps) {
+  const showManualWorkflow = workflowMode !== 'DIRECT_API';
+  const showDirectWorkflow = workflowMode !== 'FREE_WEB';
   const [selectedSceneId, setSelectedSceneId] = useState<string>(() => {
     if (typeof window !== 'undefined') {
       const saved = sessionStorage.getItem(`active_scene_${projectId}_image`);
@@ -260,13 +264,15 @@ export function SceneImageStudio({ projectId, project, onRefresh }: SceneImageSt
           <h3 className="text-xs font-mono uppercase text-slate-400 font-bold">
             Select Shot ({project.scenes?.length || 0})
           </h3>
-          <button
-            onClick={handleGenerateAllMissing}
-            disabled={isGeneratingAll}
-            className="text-[10px] font-bold bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 px-2 py-1 rounded transition-colors disabled:opacity-50"
-          >
-            {isGeneratingAll ? 'Generating...' : 'Gen All Missing'}
-          </button>
+          {showDirectWorkflow && (
+            <button
+              onClick={handleGenerateAllMissing}
+              disabled={isGeneratingAll}
+              className="text-[10px] font-bold bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 px-2 py-1 rounded transition-colors disabled:opacity-50"
+            >
+              {isGeneratingAll ? 'Generating...' : 'Generate Missing'}
+            </button>
+          )}
         </div>
         <div className="space-y-1.5 max-h-[700px] overflow-y-auto pr-1">
           {project.scenes?.map((scene: any) => {
@@ -354,16 +360,20 @@ export function SceneImageStudio({ projectId, project, onRefresh }: SceneImageSt
                 </div>
 
                 {/* Provider Picker */}
-                <select
-                  value={selectedProvider}
-                  onChange={(e) => setSelectedProvider(e.target.value as any)}
-                  className="bg-slate-950 border border-slate-800 text-slate-200 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-amber-500"
-                >
-                  <option value="FLUX">FLUX.1 [dev]</option>
-                  <option value="GEMINI">Google Imagen 3</option>
-                  <option value="OPENAI">OpenAI GPT Image</option>
-                </select>
+                {showDirectWorkflow && (
+                  <select
+                    value={selectedProvider}
+                    onChange={(e) => setSelectedProvider(e.target.value as any)}
+                    className="bg-slate-950 border border-slate-800 text-slate-200 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-amber-500"
+                  >
+                    <option value="FLUX">FLUX.1 [dev]</option>
+                    <option value="GEMINI">Google Imagen 3</option>
+                    <option value="OPENAI">OpenAI GPT Image</option>
+                  </select>
+                )}
 
+                {showManualWorkflow && (
+                  <>
                 {/* Copy Prompt for Free Web */}
                 <button
                   onClick={handleCopyPrompt}
@@ -450,25 +460,29 @@ export function SceneImageStudio({ projectId, project, onRefresh }: SceneImageSt
                     </div>
                   )}
                 </div>
+                  </>
+                )}
 
                 {/* Generate Button (API) */}
-                <button
-                  onClick={() => handleGenerate(false)}
-                  disabled={generating}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 hover:brightness-110 transition-all disabled:opacity-50"
-                >
-                  {generating ? (
-                    <>
-                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                      Generating...
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="w-3.5 h-3.5" />
-                      Generate Take (API)
-                    </>
-                  )}
-                </button>
+                {showDirectWorkflow && (
+                  <button
+                    onClick={() => handleGenerate(false)}
+                    disabled={generating}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 hover:brightness-110 transition-all disabled:opacity-50"
+                  >
+                    {generating ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-3.5 h-3.5" />
+                        Generate with API
+                      </>
+                    )}
+                  </button>
+                )}
               </div>
             </div>
 
@@ -502,7 +516,7 @@ export function SceneImageStudio({ projectId, project, onRefresh }: SceneImageSt
                   <div className="max-w-sm space-y-1">
                     <p className="text-sm font-semibold text-slate-300">No Approved Frame Yet</p>
                     <p className="text-xs text-slate-500">
-                      Click &quot;Generate Take&quot; to compile this shot&apos;s style and character traits into a candidate frame.
+                      Click &quot;Generate with API&quot; to create a candidate frame from the locked style and character identity.
                     </p>
                   </div>
                 </div>

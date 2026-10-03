@@ -43,6 +43,7 @@ import { SoundDesignStudio } from '@/components/studio/sound-design-studio';
 import { RenderStudio } from '@/components/studio/render-studio';
 import { TimelineEditor } from '@/components/studio/timeline';
 import { AIDirectorPanel } from '@/components/studio/ai-director-panel';
+import { resolveWorkflowMode, type WorkflowMode } from '@/lib/settings/workflow-mode';
 
 type CharacterImageProvider = 'FLUX' | 'GEMINI' | 'OPENAI';
 
@@ -86,6 +87,7 @@ export default function ProjectStudioPage() {
   const [copiedCharId, setCopiedCharId] = useState<string | null>(null);
   const [characterImageProvider, setCharacterImageProvider] = useState<CharacterImageProvider>('GEMINI');
   const [imageApiStatus, setImageApiStatus] = useState<Record<string, { configured: boolean }>>({});
+  const [workflowMode, setWorkflowMode] = useState<WorkflowMode>('HYBRID');
   const [generatingCharId, setGeneratingCharId] = useState<string | null>(null);
   const [generatedCharId, setGeneratedCharId] = useState<string | null>(null);
   const [characterGenerationErrors, setCharacterGenerationErrors] = useState<Record<string, string>>({});
@@ -95,6 +97,8 @@ export default function ProjectStudioPage() {
   const selectedCharacterProvider = CHARACTER_IMAGE_PROVIDERS.find(
     (provider) => provider.id === characterImageProvider
   )!;
+  const showManualWorkflow = workflowMode !== 'DIRECT_API';
+  const showDirectWorkflow = workflowMode !== 'FREE_WEB';
   const isCharacterProviderConfigured = Boolean(
     imageApiStatus[selectedCharacterProvider.settingsKey]?.configured
   );
@@ -302,6 +306,7 @@ export default function ProjectStudioPage() {
         if (!response.ok || !data.success) return;
 
         setImageApiStatus(data.settings || {});
+        setWorkflowMode(resolveWorkflowMode(data.defaultWorkflow));
         const firstConfiguredProvider = CHARACTER_IMAGE_PROVIDERS.find(
           (provider) => data.settings?.[provider.settingsKey]?.configured
         );
@@ -655,7 +660,7 @@ export default function ProjectStudioPage() {
                 Rigorous visual traits ensuring persistent appearance across every scene and model.
               </p>
             </div>
-            <div className="flex flex-wrap items-center justify-end gap-2">
+            {showDirectWorkflow && <div className="flex flex-wrap items-center justify-end gap-2">
               <div className="flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-950 px-2.5 py-1.5">
                 <span className={`h-2 w-2 rounded-full ${isCharacterProviderConfigured ? 'bg-emerald-400' : 'bg-amber-400'}`} />
                 <select
@@ -680,7 +685,7 @@ export default function ProjectStudioPage() {
                   Add API key
                 </Link>
               )}
-            </div>
+            </div>}
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -766,14 +771,14 @@ export default function ProjectStudioPage() {
                       )}
                     </div>
 
-                    <div className="p-2.5 rounded-lg bg-amber-500/5 border border-amber-500/20 space-y-1">
+                    {showManualWorkflow && <div className="p-2.5 rounded-lg bg-amber-500/5 border border-amber-500/20 space-y-1">
                       <span className="text-[10px] font-mono text-amber-400 uppercase block font-bold">
                         Compiler Consistency Token
                       </span>
                       <p className="text-amber-200/90 font-mono text-[11px] leading-relaxed">
                         {char.consistencyPrompt}
                       </p>
-                    </div>
+                    </div>}
                   </div>
                 </div>
 
@@ -801,6 +806,7 @@ export default function ProjectStudioPage() {
                   })()}
 
                   <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                    {showDirectWorkflow && (
                     <button
                       onClick={() => handleGenerateCharacterRef(char)}
                       disabled={generatingCharId !== null || !isCharacterProviderConfigured}
@@ -830,7 +836,10 @@ export default function ProjectStudioPage() {
                         </>
                       )}
                     </button>
+                    )}
 
+                    {showManualWorkflow && (
+                    <>
                     <button
                       onClick={() => handleCopyCharPrompt(char)}
                       className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-950 border border-slate-800 text-slate-300 hover:text-white transition-colors"
@@ -863,6 +872,8 @@ export default function ProjectStudioPage() {
                         className="hidden"
                       />
                     </label>
+                    </>
+                    )}
                   </div>
 
                   {characterGenerationErrors[char.id] && (
@@ -872,12 +883,12 @@ export default function ProjectStudioPage() {
                     </div>
                   )}
 
-                  <p className="text-[10px] text-slate-500">
+                  {showDirectWorkflow && <p className="text-[10px] text-slate-500">
                     API portraits are generated at 1:1, approved, and installed as the active PRIMARY_FACE reference automatically.
-                  </p>
+                  </p>}
 
                   {/* Free Web Generators Quick Links */}
-                  <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[10px] text-slate-400">
+                  {showManualWorkflow && <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[10px] text-slate-400">
                     <span className="font-mono text-slate-500">Free Generators:</span>
                     <a
                       href="https://aitestkitchen.withgoogle.com/tools/image-fx"
@@ -903,7 +914,7 @@ export default function ProjectStudioPage() {
                     >
                       SeaArt (Flux) ↗
                     </a>
-                  </div>
+                  </div>}
                 </div>
               </div>
             ))}
@@ -1114,6 +1125,7 @@ export default function ProjectStudioPage() {
         <SceneImageStudio
           projectId={projectId}
           project={project}
+          workflowMode={workflowMode}
           onRefresh={fetchProject}
         />
       )}
@@ -1123,6 +1135,7 @@ export default function ProjectStudioPage() {
         <VideoAnimationStudio
           projectId={projectId}
           project={project}
+          workflowMode={workflowMode}
           onRefresh={fetchProject}
         />
       )}
@@ -1132,6 +1145,7 @@ export default function ProjectStudioPage() {
         <VoiceAudioStudio
           projectId={projectId}
           project={project}
+          workflowMode={workflowMode}
           onRefresh={fetchProject}
         />
       )}

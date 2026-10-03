@@ -21,14 +21,18 @@ import {
   ChevronDown,
   ChevronRight,
 } from 'lucide-react';
+import type { WorkflowMode } from '@/lib/settings/workflow-mode';
 
 interface VoiceAudioStudioProps {
   projectId: string;
   project: any;
+  workflowMode: WorkflowMode;
   onRefresh?: () => void;
 }
 
-export function VoiceAudioStudio({ projectId, project, onRefresh }: VoiceAudioStudioProps) {
+export function VoiceAudioStudio({ projectId, project, workflowMode, onRefresh }: VoiceAudioStudioProps) {
+  const showManualWorkflow = workflowMode !== 'DIRECT_API';
+  const showDirectWorkflow = workflowMode !== 'FREE_WEB';
   const [voices, setVoices] = useState<any[]>([]);
   const [selectedVoice, setSelectedVoice] = useState<string>('shubh');
   const [testText, setTestText] = useState<string>('महाराजा विक्रमादित्य ने ₹500 का पुरस्कार दिया और धर्म की रक्षा का संकल्प लिया।');
@@ -401,16 +405,19 @@ export function VoiceAudioStudio({ projectId, project, onRefresh }: VoiceAudioSt
             Native Sarvam AI Bulbul TTS & Multilingual Voice Studio with vocal chain mastering (-16 LUFS).
           </p>
         </div>
-        <button
-          onClick={handleGenerateAllMissing}
-          disabled={isGeneratingAll}
-          className="text-xs font-bold bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 px-3 py-2 rounded-lg transition-colors disabled:opacity-50 whitespace-nowrap"
-        >
-          {isGeneratingAll ? 'Generating...' : 'Gen All Missing Audio'}
-        </button>
+        {showDirectWorkflow && (
+          <button
+            onClick={handleGenerateAllMissing}
+            disabled={isGeneratingAll}
+            className="text-xs font-bold bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 px-3 py-2 rounded-lg transition-colors disabled:opacity-50 whitespace-nowrap"
+          >
+            {isGeneratingAll ? 'Generating...' : 'Generate Missing Audio'}
+          </button>
+        )}
       </div>
 
       {/* SECTION 1: VOICE AUDITION & TESTING (COLLAPSIBLE) */}
+      {showManualWorkflow && (
       <div className="rounded-xl border border-slate-800 bg-slate-900/60 overflow-hidden">
         <button
           type="button"
@@ -513,6 +520,7 @@ export function VoiceAudioStudio({ projectId, project, onRefresh }: VoiceAudioSt
           </div>
         )}
       </div>
+      )}
 
       {/* SECTION 2: CHARACTER VOICE CASTING */}
       <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-6 space-y-5">
@@ -640,7 +648,7 @@ export function VoiceAudioStudio({ projectId, project, onRefresh }: VoiceAudioSt
 
                 <div className="flex flex-wrap items-center gap-2 shrink-0">
                   {/* Copy Hindi Text for Web TTS */}
-                  {scene.narrationHindi && (
+                  {showManualWorkflow && scene.narrationHindi && (
                     <button
                       onClick={() => handleCopyText(scene.id, scene.narrationHindi)}
                       title="Copy Hindi text to paste into Sarvam AI web, ElevenLabs, or Edge-TTS"
@@ -661,6 +669,7 @@ export function VoiceAudioStudio({ projectId, project, onRefresh }: VoiceAudioSt
                   )}
 
                   {/* Upload Custom Audio (Free Web Import) */}
+                  {showManualWorkflow && (
                   <label className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-indigo-500/10 border border-indigo-500/30 text-indigo-300 hover:bg-indigo-500/20 cursor-pointer transition-colors">
                     <Upload className="w-3.5 h-3.5 text-indigo-400" />
                     <span>{uploadingAudioSceneId === scene.id ? 'Uploading...' : 'Upload Audio'}</span>
@@ -676,8 +685,10 @@ export function VoiceAudioStudio({ projectId, project, onRefresh }: VoiceAudioSt
                       className="hidden"
                     />
                   </label>
+                  )}
 
                   {/* Free Quota Web Voice Generators */}
+                  {showManualWorkflow && (
                   <div className="relative">
                     <button
                       onClick={() => setOpenFreeTtsSceneId(openFreeTtsSceneId === scene.id ? null : scene.id)}
@@ -721,6 +732,7 @@ export function VoiceAudioStudio({ projectId, project, onRefresh }: VoiceAudioSt
                       </div>
                     )}
                   </div>
+                  )}
 
                   {audioUrl && (
                     <div className="flex items-center gap-1 bg-slate-800/50 p-1 rounded-lg border border-slate-700/50">
@@ -762,23 +774,25 @@ export function VoiceAudioStudio({ projectId, project, onRefresh }: VoiceAudioSt
                     </div>
                   )}
 
-                  <button
-                    onClick={() => handleGenerateSceneNarration(scene)}
-                    disabled={isLoading || !scene.narrationHindi}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-500 text-slate-950 hover:bg-amber-400 transition-colors disabled:opacity-40"
-                  >
-                    {isLoading ? (
-                      <>
-                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                        Mastering...
-                      </>
-                    ) : (
-                      <>
-                        <Volume2 className="w-3.5 h-3.5" />
-                        Generate (API)
-                      </>
-                    )}
-                  </button>
+                  {showDirectWorkflow && (
+                    <button
+                      onClick={() => handleGenerateSceneNarration(scene)}
+                      disabled={isLoading || !scene.narrationHindi}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-500 text-slate-950 hover:bg-amber-400 transition-colors disabled:opacity-40"
+                    >
+                      {isLoading ? (
+                        <>
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          Mastering...
+                        </>
+                      ) : (
+                        <>
+                          <Volume2 className="w-3.5 h-3.5" />
+                          Generate with API
+                        </>
+                      )}
+                    </button>
+                  )}
                 </div>
               </div>
             );

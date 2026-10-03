@@ -22,10 +22,12 @@ import {
   Download,
 } from 'lucide-react';
 import { AVAILABLE_VIDEO_MODELS } from '@/lib/providers/video/models';
+import type { WorkflowMode } from '@/lib/settings/workflow-mode';
 
 interface VideoAnimationStudioProps {
   projectId: string;
   project: any;
+  workflowMode: WorkflowMode;
   onRefresh?: () => void;
 }
 
@@ -49,7 +51,9 @@ const MOTION_PRESETS = [
   { id: 'DYNAMIC', label: 'Dynamic Action & Walking' },
 ];
 
-export function VideoAnimationStudio({ projectId, project, onRefresh }: VideoAnimationStudioProps) {
+export function VideoAnimationStudio({ projectId, project, workflowMode, onRefresh }: VideoAnimationStudioProps) {
+  const showManualWorkflow = workflowMode !== 'DIRECT_API';
+  const showDirectWorkflow = workflowMode !== 'FREE_WEB';
   const [selectedSceneId, setSelectedSceneId] = useState<string>(() => {
     if (typeof window !== 'undefined') {
       const saved = sessionStorage.getItem(`active_scene_${projectId}_video`);
@@ -110,7 +114,7 @@ export function VideoAnimationStudio({ projectId, project, onRefresh }: VideoAni
               imageAssetId: approvedImage.id,
               provider: modelMeta?.provider || 'KLING',
               modelId: selectedModel,
-              motionPrompt: shot?.description || scene.summary || undefined,
+              motionPrompt: workflowMode === 'DIRECT_API' ? undefined : shot?.description || scene.summary || undefined,
               cameraMovement: scene.cameraMovement || 'SLOW_DOLLY_IN',
               motionPreset: scene.motionPreset || 'NATURAL',
               durationSeconds: Math.min(8, Math.max(3, Math.round(shot?.duration || scene.durationSeconds || 5))),
@@ -278,7 +282,7 @@ export function VideoAnimationStudio({ projectId, project, onRefresh }: VideoAni
           imageAssetId: approvedAnchorFrame.id,
           provider: modelMeta?.provider || 'KLING',
           modelId: selectedModel,
-          motionPrompt: motionPrompt || undefined,
+          motionPrompt: workflowMode === 'DIRECT_API' ? undefined : motionPrompt || undefined,
           cameraMovement: cameraMove,
           motionPreset: motionPreset,
           durationSeconds: duration,
@@ -335,13 +339,15 @@ export function VideoAnimationStudio({ projectId, project, onRefresh }: VideoAni
             Turn approved production frames into cinematic 3-8 second video shots using Kling & Seedance.
           </p>
         </div>
-        <button
-          onClick={handleGenerateAllMissing}
-          disabled={isGeneratingAll}
-          className="text-xs font-bold bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 px-3 py-2 rounded-lg transition-colors disabled:opacity-50 whitespace-nowrap"
-        >
-          {isGeneratingAll ? 'Submitting to Queue...' : 'Gen All Missing Videos'}
-        </button>
+        {showDirectWorkflow && (
+          <button
+            onClick={handleGenerateAllMissing}
+            disabled={isGeneratingAll}
+            className="text-xs font-bold bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 px-3 py-2 rounded-lg transition-colors disabled:opacity-50 whitespace-nowrap"
+          >
+            {isGeneratingAll ? 'Submitting to Queue...' : 'Generate Missing Videos'}
+          </button>
+        )}
       </div>
 
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -430,15 +436,17 @@ export function VideoAnimationStudio({ projectId, project, onRefresh }: VideoAni
                   />
                   <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950 via-slate-950/40 to-transparent p-3 flex items-center justify-between">
                     <span className="text-[11px] text-slate-300 font-medium truncate">{selectedScene.title}</span>
-                    <a
-                      href={`/api/media/${approvedAnchorFrame.filePath}`}
-                      download={`scene_${selectedScene.sceneNumber}_anchor.png`}
-                      title="Download image to upload into Kling or Hailuo Web"
-                      className="px-2 py-1 rounded bg-slate-900/90 hover:bg-slate-800 text-[10px] font-bold text-amber-400 border border-amber-500/30 flex items-center gap-1 transition-colors"
-                    >
-                      <Download className="w-3 h-3" />
-                      Save Frame for Web
-                    </a>
+                    {showManualWorkflow && (
+                      <a
+                        href={`/api/media/${approvedAnchorFrame.filePath}`}
+                        download={`scene_${selectedScene.sceneNumber}_anchor.png`}
+                        title="Download image to upload into Kling or Hailuo Web"
+                        className="px-2 py-1 rounded bg-slate-900/90 hover:bg-slate-800 text-[10px] font-bold text-amber-400 border border-amber-500/30 flex items-center gap-1 transition-colors"
+                      >
+                        <Download className="w-3 h-3" />
+                        Save Frame for Web
+                      </a>
+                    )}
                   </div>
                 </div>
               ) : (
@@ -457,6 +465,7 @@ export function VideoAnimationStudio({ projectId, project, onRefresh }: VideoAni
               </h3>
 
               {/* Free Web Generation Helper Box */}
+              {showManualWorkflow && (
               <div className="p-3 rounded-lg bg-indigo-950/20 border border-indigo-500/30 space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] font-bold text-indigo-300 flex items-center gap-1.5">
@@ -539,8 +548,10 @@ export function VideoAnimationStudio({ projectId, project, onRefresh }: VideoAni
                   />
                 </label>
               </div>
+              )}
 
               {/* Model Choice (API Mode) */}
+              {showDirectWorkflow && (
               <div className="space-y-1.5 pt-2 border-t border-slate-800">
                 <div className="flex items-center justify-between">
                   <label className="text-[11px] font-semibold text-slate-400">Paid API Video Engine:</label>
@@ -558,6 +569,7 @@ export function VideoAnimationStudio({ projectId, project, onRefresh }: VideoAni
                   ))}
                 </select>
               </div>
+              )}
 
               {/* Camera Movement */}
               <div className="grid grid-cols-2 gap-3">
@@ -593,6 +605,7 @@ export function VideoAnimationStudio({ projectId, project, onRefresh }: VideoAni
               </div>
 
               {/* Duration Slider */}
+              {showManualWorkflow && (
               <div className="space-y-1.5">
                 <div className="flex justify-between text-[11px] font-semibold text-slate-400">
                   <span>Shot Duration:</span>
@@ -608,8 +621,10 @@ export function VideoAnimationStudio({ projectId, project, onRefresh }: VideoAni
                   className="w-full accent-amber-500 bg-slate-800 h-1.5 rounded-lg appearance-none cursor-pointer"
                 />
               </div>
+              )}
 
               {/* Custom Prompt */}
+              {showManualWorkflow && (
               <div className="space-y-1.5">
                 <label className="text-[11px] font-semibold text-slate-400">
                   Custom Motion Prompt (Optional):
@@ -622,25 +637,28 @@ export function VideoAnimationStudio({ projectId, project, onRefresh }: VideoAni
                   className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
                 />
               </div>
+              )}
 
               {/* Submit Button */}
-              <button
-                onClick={handleGenerateVideo}
-                disabled={!approvedAnchorFrame || submittingSceneId === selectedScene.id}
-                className="w-full py-2.5 rounded-lg text-xs font-bold bg-amber-500 text-slate-950 hover:bg-amber-400 transition-colors flex items-center justify-center gap-2 disabled:opacity-40"
-              >
-                {submittingSceneId === selectedScene.id ? (
-                  <>
-                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                    Submitting Video Job...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="w-3.5 h-3.5" />
-                    Animate Shot (Image → Video)
-                  </>
-                )}
-              </button>
+              {showDirectWorkflow && (
+                <button
+                  onClick={handleGenerateVideo}
+                  disabled={!approvedAnchorFrame || submittingSceneId === selectedScene.id}
+                  className="w-full py-2.5 rounded-lg text-xs font-bold bg-amber-500 text-slate-950 hover:bg-amber-400 transition-colors flex items-center justify-center gap-2 disabled:opacity-40"
+                >
+                  {submittingSceneId === selectedScene.id ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      Submitting Video Job...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-3.5 h-3.5" />
+                      Generate Video
+                    </>
+                  )}
+                </button>
+              )}
             </div>
           </div>
 
@@ -694,7 +712,7 @@ export function VideoAnimationStudio({ projectId, project, onRefresh }: VideoAni
                   <Film className="w-8 h-8 mx-auto text-slate-700" />
                   <p>No video takes generated yet for this shot.</p>
                   <p className="text-[11px] text-slate-600">
-                    Click &quot;Animate Shot&quot; on the left to start the first motion pass.
+                    Click &quot;Generate Video&quot; on the left to start the first motion pass.
                   </p>
                 </div>
               ) : (

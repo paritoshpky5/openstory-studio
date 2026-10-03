@@ -15,6 +15,7 @@ import {
   Upload,
   Zap,
 } from 'lucide-react';
+import { resolveWorkflowMode, type WorkflowMode } from '@/lib/settings/workflow-mode';
 
 interface KeyConfig {
   key: string;
@@ -111,10 +112,11 @@ export function SettingsStudio() {
   const [settingsStatus, setSettingsStatus] = useState<Record<string, { configured: boolean; preview: string }>>({});
   const [inputValues, setInputValues] = useState<Record<string, string>>({});
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
-  const [defaultWorkflow, setDefaultWorkflow] = useState<string>('HYBRID');
+  const [defaultWorkflow, setDefaultWorkflow] = useState<WorkflowMode>('HYBRID');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const fetchSettings = async () => {
     try {
@@ -123,7 +125,7 @@ export function SettingsStudio() {
       const data = await res.json();
       if (data.success) {
         setSettingsStatus(data.settings);
-        setDefaultWorkflow(data.defaultWorkflow || 'HYBRID');
+        setDefaultWorkflow(resolveWorkflowMode(data.defaultWorkflow));
       }
     } catch (e) {
       console.error('Failed to load settings:', e);
@@ -148,6 +150,7 @@ export function SettingsStudio() {
     try {
       setSaving(true);
       setSaveSuccess(false);
+      setSaveError(null);
 
       // Only send keys that the user actively typed into
       const payloadKeys: Record<string, string> = {};
@@ -171,10 +174,10 @@ export function SettingsStudio() {
         await fetchSettings();
         setTimeout(() => setSaveSuccess(false), 3000);
       } else {
-        alert(data.error || 'Failed to save settings');
+        setSaveError(data.error || 'Failed to save settings');
       }
     } catch (e: any) {
-      alert(e.message || 'Error saving settings');
+      setSaveError(e.message || 'Error saving settings');
     } finally {
       setSaving(false);
     }
@@ -215,7 +218,7 @@ export function SettingsStudio() {
                       </span>
                     ) : (
                       <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">
-                        Free Web / Mock
+                        {defaultWorkflow === 'DIRECT_API' ? 'Key required' : 'Free Web / Mock'}
                       </span>
                     )}
                   </div>
@@ -276,10 +279,10 @@ export function SettingsStudio() {
         <div>
           <h2 className="text-xl font-bold text-white flex items-center gap-2">
             <Key className="w-5 h-5 text-amber-400" />
-            Studio API Keys & Workflow Settings
+            API & Workflow
           </h2>
           <p className="text-xs text-slate-400 mt-1">
-            Configure only the keys you have or want. Missing keys seamlessly fallback to the 100% Free Web (Copy & Upload) workflow.
+            Select how the studio should generate assets, then add only the API keys that workflow needs.
           </p>
         </div>
 
@@ -307,6 +310,13 @@ export function SettingsStudio() {
         </button>
       </div>
 
+      {saveError && (
+        <div className="flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-200" role="alert">
+          <AlertCircle className="h-4 w-4 shrink-0 text-red-400" />
+          {saveError}
+        </div>
+      )}
+
       {/* WORKFLOW PREFERENCE SELECTOR */}
       <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-5 space-y-3">
         <h3 className="text-xs font-mono uppercase text-slate-400 font-bold flex items-center gap-2">
@@ -314,7 +324,7 @@ export function SettingsStudio() {
           Default Generation Workflow Mode
         </h3>
         <p className="text-xs text-slate-400">
-          Choose how you prefer to operate OpenStory Studio. You can still use both methods anytime.
+          Direct API keeps the studio automated and hides manual prompt, web-tool, and upload controls.
         </p>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
@@ -339,9 +349,9 @@ export function SettingsStudio() {
           </button>
 
           <button
-            onClick={() => setDefaultWorkflow('API_DIRECT')}
+            onClick={() => setDefaultWorkflow('DIRECT_API')}
             className={`p-3.5 rounded-xl border text-left flex flex-col justify-between transition-all ${
-              defaultWorkflow === 'API_DIRECT'
+              defaultWorkflow === 'DIRECT_API'
                 ? 'bg-amber-950/40 border-amber-500/50 shadow-sm'
                 : 'bg-slate-950 border-slate-800 hover:border-slate-700'
             }`}
@@ -349,10 +359,10 @@ export function SettingsStudio() {
             <div className="space-y-1">
               <span className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
                 <Zap className="w-3.5 h-3.5" />
-                Direct API Mode
+                Direct API Mode (Automated)
               </span>
               <p className="text-[11px] text-slate-400">
-                1-click generation inside the studio via paid API credit keys.
+                Clean one-click generation with prompts compiled automatically behind the scenes.
               </p>
             </div>
             <span className="text-[10px] text-amber-400 font-mono mt-3">Requires funded API keys</span>
@@ -369,7 +379,7 @@ export function SettingsStudio() {
             <div className="space-y-1">
               <span className="text-xs font-bold text-cyan-300 flex items-center gap-1.5">
                 <Sparkles className="w-3.5 h-3.5" />
-                Hybrid Mode (Recommended)
+                Hybrid Mode
               </span>
               <p className="text-[11px] text-slate-400">
                 Displays both Copy & Upload alongside Direct API buttons on every shot.

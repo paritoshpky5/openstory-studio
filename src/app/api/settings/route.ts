@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
+import { normalizeWorkflowMode, resolveWorkflowMode } from '@/lib/settings/workflow-mode';
 
 const SUPPORTED_KEYS = [
   { key: 'OPENAI_API_KEY', label: 'OpenAI (Story & GPT Image)', category: 'LLM & IMAGE' },
@@ -16,7 +17,6 @@ const SUPPORTED_KEYS = [
   { key: 'SYNCLABS_API_KEY', label: 'SyncLabs Lip Sync', category: 'LIPSYNC' },
 ];
 const SUPPORTED_KEY_NAMES = new Set(SUPPORTED_KEYS.map((item) => item.key));
-const SUPPORTED_WORKFLOWS = new Set(['HYBRID', 'FREE_WEB', 'DIRECT_API']);
 
 function getSettingsFilePath(): string {
   const dataDir = path.join(process.cwd(), 'data');
@@ -110,7 +110,7 @@ export async function GET() {
     return NextResponse.json({
       success: true,
       settings: result,
-      defaultWorkflow: saved.defaultWorkflow || 'HYBRID',
+      defaultWorkflow: resolveWorkflowMode(saved.defaultWorkflow),
     });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
@@ -121,8 +121,8 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const incomingKeys: Record<string, unknown> = body.keys || {};
-    const defaultWorkflow: string = body.defaultWorkflow || 'HYBRID';
-    if (!SUPPORTED_WORKFLOWS.has(defaultWorkflow)) {
+    const defaultWorkflow = normalizeWorkflowMode(body.defaultWorkflow ?? 'HYBRID');
+    if (!defaultWorkflow) {
       return NextResponse.json({ success: false, error: 'Unsupported default workflow' }, { status: 400 });
     }
 
