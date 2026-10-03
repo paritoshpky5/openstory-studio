@@ -5,6 +5,7 @@ import path from 'path';
 import prisma from '@/lib/db/prisma';
 import { getLipSyncProvider } from '@/lib/providers/lipsync';
 import { projectBoundaryStatus, requireProjectAsset, requireProjectScene } from '@/lib/security/project-boundary';
+import { probeMediaDuration } from '@/lib/media/media-probe';
 
 const lipSyncSchema = z.object({
   sceneId: z.string(),
@@ -61,6 +62,11 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
       fs.writeFileSync(fullFilePath, Buffer.from('mock lipsync video'));
     }
 
+    const renderedDuration = await probeMediaDuration(fullFilePath);
+    const expectedDuration = audioAsset.duration || 0;
+    const isLongEnoughForSpeech = !expectedDuration ||
+      (renderedDuration !== null && renderedDuration >= expectedDuration - 0.2);
+
     // Create AssetVersion record
     const assetVersion = await prisma.assetVersion.create({
       data: {
@@ -73,21 +79,26 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
         channel: 'DIRECT_API',
         filePath: relativeFilePath,
         mimeType: 'video/mp4',
-        duration: videoAsset.duration || 5.0,
+        duration: renderedDuration || videoAsset.duration || 5.0,
         prompt: `Lip sync: ${audioAsset.prompt || 'Speech sync'}`,
         settings: JSON.stringify({
           sourceVideoId: videoAsset.id,
           sourceAudioId: audioAsset.id,
         }),
         referencePaths: JSON.stringify([videoAsset.filePath, audioAsset.filePath]),
-        approvalStatus: 'APPROVED',
-        isActive: true,
+        // A short lip-sync take makes speech look rushed or cuts it off. Keep it
+        // available for review, but never silently replace the production video.
+        approvalStatus: isLongEnoughForSpeech ? 'APPROVED' : 'PENDING',
+        isActive: isLongEnoughForSpeech,
       },
     });
 
     return NextResponse.json({
       success: true,
       assetVersion,
+      warning: isLongEnoughForSpeech
+        ? undefined
+        : `Lip-sync take is ${renderedDuration?.toFixed(2) ?? 'an unknown'}s, shorter than its ${expectedDuration.toFixed(2)}s speech track. It was kept inactive for review.`,
     });
   } catch (error: any) {
     console.error('[API generate-lipsync] Error:', error);

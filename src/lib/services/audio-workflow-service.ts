@@ -7,6 +7,7 @@ import { HindiTTSPreprocessor } from '@/lib/audio/hindi-preprocessor';
 import { PronunciationDictionary } from '@/lib/audio/pronunciation-dict';
 import { AudioMasteringService } from '@/lib/audio/audio-mastering';
 import { PricingCalculator } from './pricing-calculator';
+import { syncSceneTimingToSpeech } from './audio-timing-service';
 
 export interface GenerateAudioRequest {
   projectId: string;
@@ -69,6 +70,9 @@ export class AudioWorkflowService {
         where: { id: job.resultAssetId },
       });
       if (existingAsset) {
+        if (req.sceneId && existingAsset.duration) {
+          await syncSceneTimingToSpeech(req.sceneId, existingAsset.duration);
+        }
         return {
           assetVersion: existingAsset,
           job,
@@ -179,16 +183,10 @@ export class AudioWorkflowService {
         },
       });
 
-      // If there's an associated scene, link duration if needed
+      // Speech is the timing master: update scene length and create a practical
+      // multi-shot coverage plan before any paid video generation.
       if (req.sceneId && finalDuration > 0) {
-        const scene = await prisma.scene.findUnique({ where: { id: req.sceneId } });
-        // If scene's current duration is less than the narration duration, automatically adjust it to fit speech
-        if (scene && scene.durationSeconds < finalDuration) {
-          await prisma.scene.update({
-            where: { id: req.sceneId },
-            data: { durationSeconds: Math.ceil(finalDuration) },
-          });
-        }
+        await syncSceneTimingToSpeech(req.sceneId, finalDuration);
       }
 
       // 9. Mark Job as Completed

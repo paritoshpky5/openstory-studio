@@ -56,6 +56,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     let finalNegative = validated.customNegativePrompt || '';
 
     let scene: any = null;
+    let shot: any = null;
     let activeReferences: { characterId: string; filePath: string; type: string }[] = [];
 
     if (validated.sceneId) {
@@ -83,7 +84,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     }
     if (validated.characterId) await requireProjectCharacter(projectId, validated.characterId);
     if (validated.shotId) {
-      const shot = await requireProjectShot(projectId, validated.shotId);
+      shot = await requireProjectShot(projectId, validated.shotId);
       if (validated.sceneId && shot.sceneId !== validated.sceneId) {
         return NextResponse.json({ error: 'Shot does not belong to the selected scene' }, { status: 400 });
       }
@@ -118,6 +119,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
         const compiled = PromptCompiler.compileForImage(
           {
             scene: scene as any,
+            shot: shot || undefined,
             styleBible: project.styleBible as any,
             characters,
             activeReferences,

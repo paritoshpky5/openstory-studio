@@ -18,6 +18,7 @@ export interface MasteringOptions {
   highpassFreq?: number;   // e.g. 80 Hz rumble cut
   presenceBoostDb?: number;// e.g. +2 dB at 3kHz for vocal presence
   outputFormat?: 'wav' | 'mp3' | 'aac';
+  speedFactor?: number;    // e.g. 1.25 for 25% faster
 }
 
 export interface MasteringResult {
@@ -78,11 +79,15 @@ export class AudioMasteringService {
     }
 
     // Build FFmpeg audio filter chain
-    const filterChain = [
-      `highpass=f=${highpassFreq}`,
-      `equalizer=f=3000:width_type=q:w=1.2:g=${presenceBoostDb}`,
-      `loudnorm=I=${targetLufs}:TP=${truePeak}:LRA=11`,
-    ].join(',');
+    const filters = [];
+    if (options.speedFactor && options.speedFactor !== 1.0) {
+      filters.push(`atempo=${options.speedFactor}`);
+    }
+    filters.push(`highpass=f=${highpassFreq}`);
+    filters.push(`equalizer=f=3000:width_type=q:w=1.2:g=${presenceBoostDb}`);
+    filters.push(`loudnorm=I=${targetLufs}:TP=${truePeak}:LRA=11`);
+
+    const filterChain = filters.join(',');
 
     return new Promise((resolve, reject) => {
       const command = ffmpeg(inputPath)

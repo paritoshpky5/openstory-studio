@@ -5,6 +5,7 @@ import { ImageWorkflowService } from '../image-workflow-service';
 describe('ImageWorkflowService End-to-End', { timeout: 20000 }, () => {
   const testProjectId = 'test_img_proj_' + Date.now();
   let sceneId: string;
+  let characterId: string;
 
   beforeAll(async () => {
     // Create test project
@@ -31,6 +32,24 @@ describe('ImageWorkflowService End-to-End', { timeout: 20000 }, () => {
       },
     });
     sceneId = scene.id;
+
+    const character = await prisma.character.create({
+      data: {
+        projectId: testProjectId,
+        name: 'Chintu',
+        role: 'PROTAGONIST',
+        ageDescription: 'Young adult rabbit',
+        faceDescription: 'Rounded expressive rabbit face',
+        skinDescription: 'Warm light brown fur',
+        eyeDescription: 'Large deep brown eyes',
+        hairDescription: 'Short plush fur',
+        bodyDescription: 'Slim athletic rabbit body',
+        clothingDescription: 'Saffron-orange neck scarf',
+        consistencyPrompt: 'A light brown rabbit wearing a saffron scarf',
+        negativeConsistencyPrompt: 'different scarf color',
+      },
+    });
+    characterId = character.id;
   });
 
   afterAll(async () => {
@@ -144,5 +163,45 @@ describe('ImageWorkflowService End-to-End', { timeout: 20000 }, () => {
     expect(rejected.approvalStatus).toBe('REJECTED');
     expect(rejected.isActive).toBe(false);
     expect(rejected.rejectionReasons).toContain('CHARACTER_CLOTHING_MISMATCH');
+  });
+
+  it('keeps exactly one active character reference and makes approval idempotent', async () => {
+    const first = await ImageWorkflowService.generateImage({
+      projectId: testProjectId,
+      characterId,
+      assetType: 'CHARACTER_REFERENCE',
+      provider: 'GEMINI',
+      modelId: 'gemini-3.1-flash-image',
+      prompt: 'A centered character portrait of Chintu',
+      settings: { aspectRatio: '1:1', referenceType: 'PRIMARY_FACE' },
+      forceRegeneration: true,
+    });
+    await ImageWorkflowService.approveAssetVersion(first.assetVersion.id, true);
+    await ImageWorkflowService.approveAssetVersion(first.assetVersion.id, true);
+
+    let references = await prisma.characterReference.findMany({
+      where: { characterId, referenceType: 'PRIMARY_FACE' },
+    });
+    expect(references).toHaveLength(1);
+    expect(references[0].isActive).toBe(true);
+
+    const second = await ImageWorkflowService.generateImage({
+      projectId: testProjectId,
+      characterId,
+      assetType: 'CHARACTER_REFERENCE',
+      provider: 'OPENAI',
+      modelId: 'gpt-image-1',
+      prompt: 'A refined centered character portrait of Chintu',
+      settings: { aspectRatio: '1:1', referenceType: 'PRIMARY_FACE' },
+      forceRegeneration: true,
+    });
+    await ImageWorkflowService.approveAssetVersion(second.assetVersion.id, true);
+
+    references = await prisma.characterReference.findMany({
+      where: { characterId, referenceType: 'PRIMARY_FACE' },
+    });
+    expect(references).toHaveLength(2);
+    expect(references.filter((reference) => reference.isActive)).toHaveLength(1);
+    expect(references.find((reference) => reference.isActive)?.filePath).toBe(second.assetVersion.filePath);
   });
 });

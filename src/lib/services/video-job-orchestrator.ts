@@ -5,10 +5,12 @@ import { JobManager } from './job-manager';
 import { getVideoProvider } from '@/lib/providers/video';
 import { PricingCalculator } from './pricing-calculator';
 import { resolveStoredMediaPath } from '@/lib/storage/project-storage';
+import { probeMediaDuration } from '@/lib/media/media-probe';
 
 export interface SubmitVideoRequest {
   projectId: string;
   sceneId: string;
+  shotId?: string;
   characterId?: string;
   prompt: string;
   imageReferencePath: string; // The production image to animate
@@ -28,6 +30,7 @@ export class VideoJobOrchestrator {
     const { job, isNew } = await JobManager.getOrCreateJob({
       projectId: req.projectId,
       sceneId: req.sceneId,
+      shotId: req.shotId,
       jobType: 'VIDEO',
       provider: req.provider,
       modelId: req.modelId,
@@ -200,6 +203,7 @@ export class VideoJobOrchestrator {
     }
 
     const relativePath = path.join('projects', job.projectId, 'videos', fileName).replace(/\\/g, '/');
+    const duration = await probeMediaDuration(filePath);
 
     // 2. Calculate Pricing (assuming 5 seconds default, or fetch actual duration)
     // For now we'll assume a standard 5s generation unit for estimation
@@ -220,13 +224,14 @@ export class VideoJobOrchestrator {
         id: assetId,
         projectId: job.projectId,
         sceneId: job.sceneId,
+        shotId: settings.shotId || null,
         assetType: 'VIDEO',
         provider: job.provider,
         modelId: job.modelId,
         channel: job.channel,
         filePath: relativePath,
         mimeType: 'video/mp4',
-        duration: 5.0, // Will be updated by ffprobe later if needed
+        duration: duration || 5.0,
         prompt: prompt,
         settings: JSON.stringify(settings),
         referencePaths: JSON.stringify([settings.imageReferencePath]),

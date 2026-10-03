@@ -5,9 +5,10 @@ import {
   Film,
   Download,
   Settings,
-  Sparkles,
   RefreshCw,
   CheckCircle2,
+  AlertTriangle,
+  ShieldCheck,
   Monitor,
   Smartphone,
   Youtube,
@@ -61,13 +62,70 @@ export function RenderStudio({ projectId, project, onRefresh }: RenderStudioProp
     }
   };
 
-  const renders = project?.assetVersions?.filter((a: any) => a.assetType === 'RENDER') || [];
+  const renders = [
+    ...(project?.assetVersions || []),
+    ...(project?.scenes || []).flatMap((scene: any) => scene.assetVersions || []),
+  ].filter((asset: any, index: number, all: any[]) =>
+    asset.assetType === 'RENDER' && all.findIndex((candidate) => candidate.id === asset.id) === index
+  );
+
+  const qualityWarnings = (project?.scenes || []).flatMap((scene: any) => {
+    const assets = scene.assetVersions || [];
+    const speech = assets.find((asset: any) =>
+      asset.isActive && (asset.assetType === 'NARRATION' || asset.assetType === 'DIALOGUE')
+    );
+    const visual = assets.find((asset: any) => asset.isActive && asset.assetType === 'LIPSYNC') ||
+      assets.find((asset: any) => asset.isActive && asset.assetType === 'VIDEO');
+    const text = scene.dialogueHindi || scene.narrationHindi || '';
+    const wordsPerMinute = speech?.duration && text.trim()
+      ? Math.round((text.trim().split(/\s+/).length * 60) / speech.duration)
+      : null;
+    const warnings: string[] = [];
+
+    if (wordsPerMinute && wordsPerMinute > 180) {
+      warnings.push(`Scene ${scene.sceneNumber}: narration is ${wordsPerMinute} WPM; aim for 140–170 WPM for a relaxed Hindi storyteller.`);
+    }
+    if (visual?.duration && speech?.duration && visual.duration + 0.2 < speech.duration) {
+      warnings.push(`Scene ${scene.sceneNumber}: the ${visual.assetType.toLowerCase()} take is ${visual.duration.toFixed(1)}s for ${speech.duration.toFixed(1)}s of speech.`);
+    }
+    return warnings;
+  });
 
   return (
     <div className="space-y-6 font-sans">
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* LEFT COLUMN: Render Settings */}
         <div className="lg:col-span-5 space-y-6">
+          <div className={`rounded-xl border p-5 space-y-3 ${
+            qualityWarnings.length
+              ? 'border-amber-500/30 bg-amber-950/15'
+              : 'border-emerald-500/30 bg-emerald-950/15'
+          }`}>
+            <h3 className="text-sm font-bold text-white flex items-center gap-2">
+              {qualityWarnings.length ? (
+                <AlertTriangle className="w-4 h-4 text-amber-400" />
+              ) : (
+                <ShieldCheck className="w-4 h-4 text-emerald-400" />
+              )}
+              Automated Quality Gate
+            </h3>
+            {qualityWarnings.length ? (
+              <>
+                <p className="text-xs text-amber-100/80">
+                  {qualityWarnings.length} pacing or sync check{qualityWarnings.length === 1 ? '' : 's'} need attention before client delivery.
+                </p>
+                <ul className="space-y-1.5 text-[11px] leading-relaxed text-amber-200/90">
+                  {qualityWarnings.slice(0, 4).map((warning: string) => <li key={warning}>• {warning}</li>)}
+                  {qualityWarnings.length > 4 && <li>• +{qualityWarnings.length - 4} more checks</li>}
+                </ul>
+              </>
+            ) : (
+              <p className="text-xs text-emerald-100/80">
+                Media timing and speech pace pass the local preflight checks.
+              </p>
+            )}
+          </div>
+
           <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-5 space-y-4">
             <h3 className="text-sm font-bold text-white flex items-center gap-2">
               <Settings className="w-4 h-4 text-cyan-400" />

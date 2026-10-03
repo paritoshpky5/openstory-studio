@@ -88,6 +88,7 @@ export function VoiceAudioStudio({ projectId, project, onRefresh }: VoiceAudioSt
             voiceId,
             text: textToSpeak,
             assetType: scene.dialogueHindi ? 'DIALOGUE' : 'NARRATION',
+            settings: { pace: scene.dialogueHindi ? 0.9 : 0.78, temperature: 0.45 },
             forceRegeneration: true,
           }),
         });
@@ -289,6 +290,7 @@ export function VoiceAudioStudio({ projectId, project, onRefresh }: VoiceAudioSt
           text: textToSpeak,
           provider: 'SARVAM',
           voiceId: 'shubh',
+          settings: { pace: 0.78, temperature: 0.45 },
           masterAudio: true,
           forceRegeneration: true,
         }),
@@ -318,6 +320,27 @@ export function VoiceAudioStudio({ projectId, project, onRefresh }: VoiceAudioSt
       sceneAudioRef.current.src = url;
       sceneAudioRef.current.play();
       setPlayingSceneId(sceneId);
+    }
+  };
+
+  const handleAdjustAudioSpeed = async (sceneId: string, assetId: string, speedFactor: number) => {
+    try {
+      setSceneAudioLoading((prev) => ({ ...prev, [sceneId]: true }));
+      const res = await fetch(`/api/projects/${projectId}/assets/${assetId}/speed`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ speedFactor }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        if (onRefresh) onRefresh();
+      } else {
+        alert(data.error || 'Failed to adjust speed');
+      }
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setSceneAudioLoading((prev) => ({ ...prev, [sceneId]: false }));
     }
   };
 
@@ -700,17 +723,43 @@ export function VoiceAudioStudio({ projectId, project, onRefresh }: VoiceAudioSt
                   </div>
 
                   {audioUrl && (
-                    <button
-                      onClick={() => handlePlaySceneAudio(scene.id, audioUrl)}
-                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors ${
-                        isPlayingThis
-                          ? 'border-emerald-500 bg-emerald-500/20 text-emerald-300'
-                          : 'border-slate-700 bg-slate-800 text-slate-200 hover:bg-slate-700'
-                      }`}
-                    >
-                      {isPlayingThis ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
-                      {isPlayingThis ? 'Pause' : 'Play Take'}
-                    </button>
+                    <div className="flex items-center gap-1 bg-slate-800/50 p-1 rounded-lg border border-slate-700/50">
+                      <button
+                        onClick={() => handlePlaySceneAudio(scene.id, audioUrl)}
+                        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-bold transition-colors ${
+                          isPlayingThis
+                            ? 'bg-emerald-500/20 text-emerald-300'
+                            : 'bg-transparent text-slate-200 hover:bg-slate-700'
+                        }`}
+                      >
+                        {isPlayingThis ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
+                        {isPlayingThis ? 'Pause' : 'Play'}
+                      </button>
+                      {activeAudio && (
+                        <select
+                          value={(() => {
+                            try {
+                              const s = activeAudio.settings ? JSON.parse(activeAudio.settings) : {};
+                              return String(s.speedFactor || '1.0');
+                            } catch { return '1.0'; }
+                          })()}
+                          onChange={(e) => {
+                            const speed = parseFloat(e.target.value);
+                            handleAdjustAudioSpeed(scene.id, activeAudio.id, speed);
+                          }}
+                          disabled={isLoading}
+                          className="bg-slate-900 border border-slate-700 rounded-md px-1.5 py-1 text-[10px] font-mono text-slate-300 focus:outline-none focus:border-amber-500 transition-colors"
+                          title="Adjust Audio Speed"
+                        >
+                          <option value="1.0">1.0x</option>
+                          <option value="0.9">0.9x</option>
+                          <option value="0.8">0.8x</option>
+                          <option value="1.1">1.1x</option>
+                          <option value="1.2">1.2x</option>
+                          <option value="1.25">1.25x</option>
+                        </select>
+                      )}
+                    </div>
                   )}
 
                   <button

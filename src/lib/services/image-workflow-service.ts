@@ -252,22 +252,57 @@ export class ImageWorkflowService {
               data: { activeImageVersionId: updatedAsset.id },
             });
           }
+        } else if (asset.assetType === 'VIDEO' && asset.shotId) {
+          await tx.shot.update({
+            where: { id: asset.shotId },
+            data: { activeVideoVersionId: updatedAsset.id },
+          });
         }
       }
 
       // 4. Update Character reference if it's a character reference
       if (asset.characterId && asset.assetType === 'CHARACTER_REFERENCE') {
         const refType = JSON.parse(asset.settings || '{}').referenceType || 'PRIMARY_FACE';
-        await tx.characterReference.create({
-          data: {
+        if (makeActive) {
+          await tx.characterReference.updateMany({
+            where: {
+              characterId: asset.characterId,
+              referenceType: refType,
+              isActive: true,
+            },
+            data: { isActive: false },
+          });
+        }
+
+        const existingReference = await tx.characterReference.findFirst({
+          where: {
             characterId: asset.characterId,
             referenceType: refType,
             filePath: asset.filePath,
-            promptUsed: asset.prompt,
-            isApproved: true,
-            isActive: true,
           },
         });
+
+        if (existingReference) {
+          await tx.characterReference.update({
+            where: { id: existingReference.id },
+            data: {
+              promptUsed: asset.prompt,
+              isApproved: true,
+              isActive: makeActive ? true : existingReference.isActive,
+            },
+          });
+        } else {
+          await tx.characterReference.create({
+            data: {
+              characterId: asset.characterId,
+              referenceType: refType,
+              filePath: asset.filePath,
+              promptUsed: asset.prompt,
+              isApproved: true,
+              isActive: makeActive,
+            },
+          });
+        }
       }
 
       return updatedAsset;
@@ -326,6 +361,11 @@ export class ImageWorkflowService {
         await tx.shot.update({
           where: { id: asset.shotId },
           data: { activeImageVersionId: updatedAsset.id },
+        });
+      } else if (asset.shotId && asset.assetType === 'VIDEO') {
+        await tx.shot.update({
+          where: { id: asset.shotId },
+          data: { activeVideoVersionId: updatedAsset.id },
         });
       }
 

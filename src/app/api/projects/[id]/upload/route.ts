@@ -5,6 +5,7 @@ import {
   requireProject,
   requireProjectCharacter,
   requireProjectScene,
+  requireProjectShot,
   projectBoundaryStatus,
 } from '@/lib/security/project-boundary';
 import {
@@ -14,6 +15,8 @@ import {
   sanitizeOriginalFilename,
 } from '@/lib/security/media-upload';
 import { ProjectSubdirectory, saveProjectMediaFile } from '@/lib/storage/project-storage';
+import { probeMediaDuration } from '@/lib/media/media-probe';
+import { syncSceneTimingToSpeech } from '@/lib/services/audio-timing-service';
 
 const ALLOWED_ASSET_TYPES = new Set([
   'STORYBOARD', 'PRODUCTION_IMAGE', 'CHARACTER_REF', 'CHARACTER_REFERENCE',
@@ -44,6 +47,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     const requestedAssetType = String(formData.get('assetType') || '');
     const assetType = requestedAssetType === 'CHARACTER_REF' ? 'CHARACTER_REFERENCE' : requestedAssetType;
     const sceneId = formData.get('sceneId') ? String(formData.get('sceneId')) : null;
+    const shotId = formData.get('shotId') ? String(formData.get('shotId')) : null;
     const characterId = formData.get('characterId') ? String(formData.get('characterId')) : null;
     const prompt = String(formData.get('prompt') || 'Manual web generation import').slice(0, 20_000);
     const viewType = formData.get('viewType') ? String(formData.get('viewType')) : null;
@@ -60,6 +64,12 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
 
     await requireProject(projectId);
     if (sceneId) await requireProjectScene(projectId, sceneId);
+    if (shotId) {
+      const shot = await requireProjectShot(projectId, shotId);
+      if (sceneId && shot.sceneId !== sceneId) {
+        return NextResponse.json({ success: false, error: 'Shot does not belong to the selected scene' }, { status: 400 });
+      }
+    }
     if (characterId) await requireProjectCharacter(projectId, characterId);
 
     const expectedCategory = expectedUploadCategory(assetType);
@@ -88,11 +98,14 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
       buffer
     );
     savedPath = saved.absolutePath;
+    const duration = expectedCategory === 'image'
+      ? null
+      : await probeMediaDuration(saved.absolutePath);
 
     const asset = await prisma.$transaction(async (tx) => {
       if (sceneId) {
         await tx.assetVersion.updateMany({
-          where: { projectId, sceneId, assetType, isActive: true },
+          where: { projectId, sceneId, shotId, assetType, isActive: true },
           data: { isActive: false },
         });
       }
@@ -105,9 +118,10 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
 
       const createdAsset = await tx.assetVersion.create({
         data: {
-          projectId, sceneId, characterId, assetType,
+          projectId, sceneId, shotId, characterId, assetType,
           provider: 'MANUAL_IMPORT', modelId: 'WEB_GENERATED', channel: 'MANUAL_IMPORT',
           filePath: saved.relativePath, mimeType: detected.mimeType, prompt,
+          duration,
           settings: JSON.stringify({
             originalFilename: sanitizeOriginalFilename(file.name),
             viewType: viewType || undefined,
@@ -138,6 +152,10 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
       }
       return createdAsset;
     });
+
+    if (sceneId && duration && (assetType === 'NARRATION' || assetType === 'DIALOGUE')) {
+      await syncSceneTimingToSpeech(sceneId, duration);
+    }
 
     return NextResponse.json({ success: true, asset, filePath: saved.relativePath });
   } catch (error: any) {

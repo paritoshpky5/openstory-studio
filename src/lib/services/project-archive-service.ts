@@ -45,6 +45,7 @@ const ArchiveManifestSchema = z.object({
   scenes: z.array(z.record(z.any())).max(10_000).default([]),
   allAssetVersions: z.array(z.record(z.any())).max(50_000).default([]),
   pronunciations: z.array(z.record(z.any())).max(10_000).default([]),
+  timeline: z.record(z.any()).nullable().optional(),
 }).passthrough();
 
 export function normalizedEntryName(entryName: string): string {
@@ -105,6 +106,7 @@ export class ProjectArchiveService {
         },
         assetVersions: true,
         pronunciations: true,
+        timeline: true,
       },
     });
 
@@ -133,6 +135,7 @@ export class ProjectArchiveService {
       scenes: project.scenes,
       allAssetVersions: project.assetVersions,
       pronunciations: project.pronunciations,
+      timeline: (project as any).timeline ? JSON.parse((project as any).timeline.data) : null,
     };
 
     // 3. Create zip container and add project.json
@@ -434,6 +437,8 @@ export class ProjectArchiveService {
       }
 
       // Recreate AssetVersions
+      // Map Assets: oldAssetId -> newAssetId
+      const assetIdMap: Record<string, string> = {};
       const allAssets = manifest.allAssetVersions || [];
       if (Array.isArray(allAssets)) {
         for (const asset of allAssets) {
@@ -441,7 +446,7 @@ export class ProjectArchiveService {
           const mappedShotId = asset.shotId ? shotIdMap[asset.shotId] || null : null;
           const mappedCharId = asset.characterId ? charIdMap[asset.characterId] || null : null;
 
-          await tx.assetVersion.create({
+          const createdAsset = await tx.assetVersion.create({
             data: {
               projectId: newProjectId,
               sceneId: mappedSceneId,
@@ -464,6 +469,10 @@ export class ProjectArchiveService {
               isActive: asset.isActive ?? true,
             },
           });
+
+          if (asset.id) {
+            assetIdMap[asset.id] = createdAsset.id;
+          }
         }
       }
 
@@ -479,6 +488,39 @@ export class ProjectArchiveService {
               notes: rule.notes,
             },
           });
+        }
+      }
+
+      // Recreate Timeline if present
+      if (manifest.timeline) {
+        try {
+          const rawTimeline = manifest.timeline;
+          const remappedTracks = (rawTimeline.tracks || []).map((track: any) => ({
+            ...track,
+            clips: (track.clips || []).map((clip: any) => ({
+              ...clip,
+              sceneId: clip.sceneId ? sceneIdMap[clip.sceneId] || null : null,
+              shotId: clip.shotId ? shotIdMap[clip.shotId] || null : null,
+              assetVersionId: clip.assetVersionId ? assetIdMap[clip.assetVersionId] || null : null,
+              sourceFilePath: remapFilePath(clip.sourceFilePath),
+            })),
+          }));
+
+          const remappedTimeline = {
+            ...rawTimeline,
+            projectId: newProjectId,
+            tracks: remappedTracks,
+          };
+
+          await tx.timeline.create({
+            data: {
+              projectId: newProjectId,
+              version: Number((rawTimeline as any).version) || 1,
+              data: JSON.stringify(remappedTimeline),
+            },
+          });
+        } catch (timelineErr: any) {
+          console.warn(`Failed to restore timeline from archive: ${timelineErr.message}`);
         }
       }
       });

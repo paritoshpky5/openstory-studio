@@ -32,6 +32,7 @@ import {
   Archive,
   FolderArchive,
   Trash2,
+  Settings,
 } from 'lucide-react';
 import { formatDuration, formatCurrency } from '@/lib/utils';
 
@@ -40,6 +41,36 @@ import { VoiceAudioStudio } from '@/components/studio/voice-audio-studio';
 import { VideoAnimationStudio } from '@/components/studio/video-animation-studio';
 import { SoundDesignStudio } from '@/components/studio/sound-design-studio';
 import { RenderStudio } from '@/components/studio/render-studio';
+import { TimelineEditor } from '@/components/studio/timeline';
+import { AIDirectorPanel } from '@/components/studio/ai-director-panel';
+
+type CharacterImageProvider = 'FLUX' | 'GEMINI' | 'OPENAI';
+
+const CHARACTER_IMAGE_PROVIDERS: Array<{
+  id: CharacterImageProvider;
+  label: string;
+  modelId: string;
+  settingsKey: string;
+}> = [
+  {
+    id: 'GEMINI',
+    label: 'Gemini 3.1 Flash Image',
+    modelId: 'gemini-3.1-flash-image',
+    settingsKey: 'GEMINI_API_KEY',
+  },
+  {
+    id: 'OPENAI',
+    label: 'OpenAI GPT Image',
+    modelId: 'gpt-image-1',
+    settingsKey: 'OPENAI_API_KEY',
+  },
+  {
+    id: 'FLUX',
+    label: 'FLUX.1 Dev',
+    modelId: 'flux-1-dev',
+    settingsKey: 'BFL_API_KEY',
+  },
+];
 
 export default function ProjectStudioPage() {
   const params = useParams();
@@ -53,8 +84,20 @@ export default function ProjectStudioPage() {
   const [lockingAction, setLockingAction] = useState<string | null>(null);
   const [uploadingCharId, setUploadingCharId] = useState<string | null>(null);
   const [copiedCharId, setCopiedCharId] = useState<string | null>(null);
+  const [characterImageProvider, setCharacterImageProvider] = useState<CharacterImageProvider>('GEMINI');
+  const [imageApiStatus, setImageApiStatus] = useState<Record<string, { configured: boolean }>>({});
+  const [generatingCharId, setGeneratingCharId] = useState<string | null>(null);
+  const [generatedCharId, setGeneratedCharId] = useState<string | null>(null);
+  const [characterGenerationErrors, setCharacterGenerationErrors] = useState<Record<string, string>>({});
   const [isExportingZip, setIsExportingZip] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  const selectedCharacterProvider = CHARACTER_IMAGE_PROVIDERS.find(
+    (provider) => provider.id === characterImageProvider
+  )!;
+  const isCharacterProviderConfigured = Boolean(
+    imageApiStatus[selectedCharacterProvider.settingsKey]?.configured
+  );
 
   const handleDeleteProject = async () => {
     if (!confirm('Are you sure you want to completely delete this project? All images, videos, and generated audio files will be permanently destroyed.')) return;
@@ -103,10 +146,101 @@ export default function ProjectStudioPage() {
   };
 
   const handleCopyCharPrompt = (char: any) => {
-    const text = `Indian character portrait. ${char.name}, ${char.role}. Age: ${char.ageDescription}. Skin tone: ${char.skinDescription}. Face: ${char.faceDescription}. Eyes: ${char.eyeDescription}, Hair: ${char.hairDescription}. Attire: ${char.clothingDescription}. Style: stylized 3D Indian animated film, rich textures, soft rim lighting, neutral studio background. Consistency token: ${char.consistencyPrompt || ''}`;
+    const text = buildCharacterPortraitPrompt(char);
     navigator.clipboard.writeText(text);
     setCopiedCharId(char.id);
     setTimeout(() => setCopiedCharId(null), 2500);
+  };
+
+  const buildCharacterPortraitPrompt = (char: any) => {
+    const styleBible = project?.styleBible;
+    return [
+      'Create one production-ready character identity portrait for an animated film character bible.',
+      `${char.name}, role: ${char.role}.`,
+      `Locked identity: ${char.consistencyPrompt || ''}`,
+      `Age and build: ${char.ageDescription}; ${char.bodyDescription}.`,
+      `Face and coloring: ${char.skinDescription}; ${char.faceDescription}.`,
+      `Eyes and hair: ${char.eyeDescription}; ${char.hairDescription}.`,
+      char.facialHairDescription ? `Facial hair: ${char.facialHairDescription}.` : '',
+      `Locked clothing: ${char.clothingDescription}.`,
+      char.accessories ? `Locked accessories: ${char.accessories}.` : '',
+      styleBible?.characterStyle ? `Character style: ${styleBible.characterStyle}.` : '',
+      styleBible?.renderStyle ? `Render style: ${styleBible.renderStyle}.` : '',
+      styleBible?.materialStyle ? `Materials: ${styleBible.materialStyle}.` : '',
+      styleBible?.lightingStyle ? `Lighting language: ${styleBible.lightingStyle}.` : '',
+      'Composition: one character only, centered head-and-shoulders portrait, straight-on eye-level camera, face fully visible, calm neutral expression, clean neutral studio background, soft even portrait lighting, sharp identity-defining details.',
+      'Preserve every named physical trait, color, clothing item, accessory, and distinctive marking exactly. No text, labels, borders, props, extra characters, or alternate costume.',
+    ].filter(Boolean).join(' ');
+  };
+
+  const buildCharacterNegativePrompt = (char: any) => [
+    char.negativeConsistencyPrompt,
+    project?.styleBible?.negativePrompt,
+    'multiple characters, duplicate body parts, cropped ears, cropped head, obscured face, profile view, extreme expression, costume variation, accessory variation, text, caption, logo, watermark, frame, busy background',
+  ].filter(Boolean).join(', ');
+
+  const handleGenerateCharacterRef = async (char: any) => {
+    const activePrimaryFace = char.references?.find(
+      (reference: any) => reference.isActive && reference.isApproved && reference.referenceType === 'PRIMARY_FACE'
+    );
+
+    try {
+      setGeneratingCharId(char.id);
+      setGeneratedCharId(null);
+      setCharacterGenerationErrors((current) => {
+        const next = { ...current };
+        delete next[char.id];
+        return next;
+      });
+
+      const generationResponse = await fetch(`/api/projects/${projectId}/generate-image`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          characterId: char.id,
+          assetType: 'CHARACTER_REFERENCE',
+          provider: selectedCharacterProvider.id,
+          modelId: selectedCharacterProvider.modelId,
+          customPrompt: buildCharacterPortraitPrompt(char),
+          customNegativePrompt: buildCharacterNegativePrompt(char),
+          settings: {
+            aspectRatio: '1:1',
+            referenceType: 'PRIMARY_FACE',
+            quality: 'auto',
+          },
+          referencePaths: activePrimaryFace ? [activePrimaryFace.filePath] : [],
+          forceRegeneration: Boolean(activePrimaryFace),
+        }),
+      });
+      const generationData = await generationResponse.json().catch(() => ({}));
+      if (!generationResponse.ok || !generationData.success) {
+        throw new Error(generationData.error || 'Character portrait generation failed');
+      }
+
+      const assetId = generationData.assetVersion?.id;
+      if (!assetId) throw new Error('The provider returned an image without an asset ID');
+
+      const approvalResponse = await fetch(`/api/projects/${projectId}/assets/${assetId}/approve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'APPROVE', makeActive: true }),
+      });
+      const approvalData = await approvalResponse.json().catch(() => ({}));
+      if (!approvalResponse.ok || !approvalData.success) {
+        throw new Error(approvalData.error || 'Portrait generated, but it could not be set as the active reference');
+      }
+
+      await fetchProject(false);
+      setGeneratedCharId(char.id);
+      setTimeout(() => setGeneratedCharId((current) => current === char.id ? null : current), 3500);
+    } catch (err: any) {
+      setCharacterGenerationErrors((current) => ({
+        ...current,
+        [char.id]: err.message || 'Character portrait generation failed',
+      }));
+    } finally {
+      setGeneratingCharId(null);
+    }
   };
 
   const handleUploadCharRef = async (charId: string, file: File) => {
@@ -137,9 +271,9 @@ export default function ProjectStudioPage() {
     }
   };
 
-  const fetchProject = async () => {
+  const fetchProject = async (showLoading = true) => {
     try {
-      setLoading(true);
+      if (showLoading) setLoading(true);
       const res = await fetch(`/api/projects/${projectId}`);
       const data = await res.json();
       if (data.success) {
@@ -150,7 +284,7 @@ export default function ProjectStudioPage() {
     } catch (err: any) {
       setError(err.message || 'Error fetching project');
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   };
 
@@ -159,6 +293,26 @@ export default function ProjectStudioPage() {
       fetchProject();
     }
   }, [projectId]);
+
+  useEffect(() => {
+    const fetchImageApiStatus = async () => {
+      try {
+        const response = await fetch('/api/settings');
+        const data = await response.json();
+        if (!response.ok || !data.success) return;
+
+        setImageApiStatus(data.settings || {});
+        const firstConfiguredProvider = CHARACTER_IMAGE_PROVIDERS.find(
+          (provider) => data.settings?.[provider.settingsKey]?.configured
+        );
+        if (firstConfiguredProvider) setCharacterImageProvider(firstConfiguredProvider.id);
+      } catch (settingsError) {
+        console.error('Failed to load image API status:', settingsError);
+      }
+    };
+
+    fetchImageApiStatus();
+  }, []);
 
   const toggleStyleLock = async () => {
     if (!project?.styleBible) return;
@@ -341,8 +495,8 @@ export default function ProjectStudioPage() {
             { id: 'scenes', label: `Scenes (${project.scenes?.length || 0})`, icon: Clapperboard, isActionable: false },
             { id: 'characters', label: `Character Bible (${project.characters?.length || 0})`, icon: Users, isActionable: true },
             { id: 'storyboards', label: 'Image Studio', icon: ImageIcon, isActionable: true },
-            { id: 'video', label: 'Video Studio', icon: VideoIcon, isActionable: true },
             { id: 'voice', label: 'Audio Lab', icon: Volume2, isActionable: true },
+            { id: 'video', label: 'Video Studio', icon: VideoIcon, isActionable: true },
             { id: 'timeline', label: 'Timeline / Export', icon: Film, isActionable: true },
           ].map((tab) => {
             const Icon = tab.icon;
@@ -501,6 +655,32 @@ export default function ProjectStudioPage() {
                 Rigorous visual traits ensuring persistent appearance across every scene and model.
               </p>
             </div>
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <div className="flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-950 px-2.5 py-1.5">
+                <span className={`h-2 w-2 rounded-full ${isCharacterProviderConfigured ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+                <select
+                  value={characterImageProvider}
+                  onChange={(event) => setCharacterImageProvider(event.target.value as CharacterImageProvider)}
+                  aria-label="Character portrait API provider"
+                  className="bg-transparent text-xs font-semibold text-slate-200 focus:outline-none"
+                >
+                  {CHARACTER_IMAGE_PROVIDERS.map((provider) => (
+                    <option key={provider.id} value={provider.id} className="bg-slate-950">
+                      {provider.label}{imageApiStatus[provider.settingsKey]?.configured ? ' — ready' : ' — key needed'}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {!isCharacterProviderConfigured && (
+                <Link
+                  href="/settings"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-xs font-semibold text-amber-300 hover:bg-amber-500/20"
+                >
+                  <Settings className="h-3.5 w-3.5" />
+                  Add API key
+                </Link>
+              )}
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -622,6 +802,36 @@ export default function ProjectStudioPage() {
 
                   <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
                     <button
+                      onClick={() => handleGenerateCharacterRef(char)}
+                      disabled={generatingCharId !== null || !isCharacterProviderConfigured}
+                      title={
+                        isCharacterProviderConfigured
+                          ? `Generate with ${selectedCharacterProvider.label}. This uses API credits and sets the result as the active face reference.`
+                          : `Add a ${selectedCharacterProvider.label} API key in Settings first.`
+                      }
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-amber-500 to-orange-500 px-3 py-1.5 text-xs font-bold text-slate-950 transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      {generatingCharId === char.id ? (
+                        <>
+                          <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                          Generating portrait...
+                        </>
+                      ) : generatedCharId === char.id ? (
+                        <>
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                          Active reference ready
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="h-3.5 w-3.5" />
+                          {char.references?.some((reference: any) => reference.isActive && reference.referenceType === 'PRIMARY_FACE')
+                            ? 'Regenerate with API'
+                            : 'Generate Portrait (API)'}
+                        </>
+                      )}
+                    </button>
+
+                    <button
                       onClick={() => handleCopyCharPrompt(char)}
                       className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-950 border border-slate-800 text-slate-300 hover:text-white transition-colors"
                     >
@@ -654,6 +864,17 @@ export default function ProjectStudioPage() {
                       />
                     </label>
                   </div>
+
+                  {characterGenerationErrors[char.id] && (
+                    <div className="flex items-start gap-2 rounded-lg border border-red-500/25 bg-red-500/10 p-2 text-[11px] text-red-200" role="alert">
+                      <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-400" />
+                      <span>{characterGenerationErrors[char.id]}</span>
+                    </div>
+                  )}
+
+                  <p className="text-[10px] text-slate-500">
+                    API portraits are generated at 1:1, approved, and installed as the active PRIMARY_FACE reference automatically.
+                  </p>
 
                   {/* Free Web Generators Quick Links */}
                   <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[10px] text-slate-400">
@@ -932,71 +1153,14 @@ export default function ProjectStudioPage() {
             </div>
           </div>
 
-          {/* Timeline Track Rows */}
-          <div className="space-y-3 font-mono text-xs">
-            {/* Video Track */}
-            <div className="space-y-1">
-              <div className="flex items-center justify-between text-slate-400 text-[11px]">
-                <span className="flex items-center gap-1.5">
-                  <Film className="w-3.5 h-3.5 text-cyan-400" />
-                  VIDEO TRACK (V1)
-                </span>
-                <span>{project.scenes?.length || 0} Shots</span>
-              </div>
-              <div className="flex gap-1 overflow-x-auto p-2 bg-slate-950 rounded-lg border border-slate-800">
-                {project.scenes?.map((s: any) => (
-                  <div
-                    key={s.id}
-                    style={{ flexGrow: s.durationSeconds }}
-                    className="min-w-[90px] h-14 rounded bg-cyan-950/60 border border-cyan-500/30 p-2 flex flex-col justify-between shrink-0 hover:bg-cyan-900/60 transition-colors cursor-pointer"
-                  >
-                    <span className="text-[10px] text-cyan-300 font-bold truncate">#{s.sceneNumber} {s.title}</span>
-                    <span className="text-[9px] text-slate-400">{s.durationSeconds}s</span>
-                  </div>
-                ))}
-              </div>
-            </div>
+          <AIDirectorPanel projectId={projectId} />
 
-            {/* Narration Track */}
-            <div className="space-y-1">
-              <div className="flex items-center justify-between text-slate-400 text-[11px]">
-                <span className="flex items-center gap-1.5">
-                  <Volume2 className="w-3.5 h-3.5 text-amber-400" />
-                  HINDI NARRATION (A1)
-                </span>
-                <span>Sarvam / ElevenLabs TTS</span>
-              </div>
-              <div className="flex gap-1 overflow-x-auto p-2 bg-slate-950 rounded-lg border border-slate-800">
-                {project.scenes?.map((s: any) => (
-                  <div
-                    key={s.id}
-                    style={{ flexGrow: s.durationSeconds }}
-                    className="min-w-[90px] h-10 rounded bg-amber-950/50 border border-amber-500/30 p-1.5 flex items-center justify-between shrink-0"
-                  >
-                    <span className="text-[10px] text-amber-200 truncate">
-                      {s.narrationHindi ? 'Narration' : 'Silence'}
-                    </span>
-                    <span className="text-[9px] text-slate-400">{s.durationSeconds}s</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Music & Ambience Track */}
-            <div className="space-y-1">
-              <div className="flex items-center justify-between text-slate-400 text-[11px]">
-                <span className="flex items-center gap-1.5">
-                  <Sliders className="w-3.5 h-3.5 text-emerald-400" />
-                  AMBIENCE & MUSIC DUCKING (A2)
-                </span>
-                <span>Auto-ducking enabled (-12dB)</span>
-              </div>
-              <div className="w-full h-8 rounded bg-emerald-950/30 border border-emerald-500/20 p-2 flex items-center justify-between">
-                <span className="text-[10px] text-emerald-400">Master Ambience Track + Soundtrack</span>
-                <span className="text-[10px] text-slate-500">{formatDuration(totalDuration)}</span>
-              </div>
-            </div>
-          </div>
+          {/* Interactive Multi-Track Timeline Editor */}
+          <TimelineEditor
+            projectId={projectId}
+            project={project}
+            onTimelineChange={fetchProject}
+          />
 
           {/* 5-Stem Sound Design, Lip Sync & Subtitle Mixer */}
           <SoundDesignStudio

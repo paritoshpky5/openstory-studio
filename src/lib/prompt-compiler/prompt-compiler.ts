@@ -33,6 +33,24 @@ export interface PromptCompilerInput {
   activeReferences?: { characterId: string; filePath: string; type: string }[];
 }
 
+function humanize(value?: string | null, fallback = 'eye level') {
+  return (value || fallback).replaceAll('_', ' ').toLowerCase();
+}
+
+function selectLens(shotType?: string | null) {
+  const shot = (shotType || '').toUpperCase();
+  if (shot.includes('WIDE') || shot === 'ESTABLISHING') return '28mm prime cinema lens';
+  if (shot.includes('CLOSE')) return '85mm prime cinema lens';
+  return '50mm prime cinema lens';
+}
+
+function fixedCharacterDescription(character: CharacterIdentityPackage) {
+  return [
+    character.consistencyPrompt,
+    character.heightDescription ? `fixed scale: ${character.heightDescription}` : '',
+  ].filter(Boolean).join(', ');
+}
+
 export class PromptCompiler {
   /**
    * Compiles provider-tailored image prompts combining style, characters, environment, lighting, and camera.
@@ -64,9 +82,7 @@ export class PromptCompiler {
     const charDescriptions = characters
       .map((c) => {
         const lockedDetails = [
-          c.consistencyPrompt,
-          `wearing ${c.clothingDescription}`,
-          c.accessories ? `with ${c.accessories}` : '',
+          fixedCharacterDescription(c),
           `expressive facial expression matching ${scene.mood.toLowerCase()}`,
         ]
           .filter(Boolean)
@@ -86,11 +102,11 @@ export class PromptCompiler {
       // 4. Lighting & Atmosphere
       `Lighting: ${scene.lighting}. ${styleBible.lightingStyle}.`,
       // 5. Cinematography & Optics
-      `Cinematography: ${scene.shotType.toLowerCase().replace('_', ' ')} shot, ${scene.cameraAngle.toLowerCase().replace('_', ' ')} angle. Lens: ${styleBible.lensStyle}. Depth of field: ${styleBible.depthOfFieldStyle}.`,
+      `Cinematography: ${humanize(scene.shotType, 'medium')} shot, ${humanize(scene.cameraAngle)} angle. Lens: ${selectLens(scene.shotType)}. Depth of field: ${styleBible.depthOfFieldStyle}. Keep every named subject fully readable with clear silhouettes and grounded feet.`,
       // 6. Materials & Shaders
       `Materials: ${styleBible.materialStyle}. ${styleBible.renderStyle}. Color grading: ${styleBible.colorLanguage}.`,
       // 7. Continuity lock
-      'Strict character consistency, highly detailed facial anatomy, intact clothing textures, no deformities.',
+      `Strict continuity: exactly ${characters.length || 1} named subject${characters.length === 1 ? '' : 's'}, stable identity, scale, anatomy, colors, markings, clothing, accessories, and left/right placement. Clean cinematic frame with no text.`,
     ]
       .filter(Boolean)
       .join(' ');
@@ -98,7 +114,7 @@ export class PromptCompiler {
     const negativePrompt = [
       styleBible.negativePrompt,
       ...characters.map((c) => c.negativeConsistencyPrompt),
-      'photorealistic live-action human faces, uncanny valley skin, blurry edges, extra hands, mutated limbs, asymmetrical clothing',
+      'photorealistic live-action human faces, uncanny valley skin, blurry edges, extra hands, extra paws, mutated limbs, asymmetrical clothing, duplicate character, wrong character count, identity drift, costume redesign, floating feet, broken ground contact, text, caption, logo, watermark, border',
     ]
       .filter(Boolean)
       .join(', ');
@@ -127,9 +143,7 @@ export class PromptCompiler {
     const shotDesc = shot?.description || scene.summary;
 
     const charDetails = characters
-      .map((c) => {
-        return `A stylized 3D animated character named ${c.name} (${c.ageDescription}, ${c.skinDescription}, ${c.faceDescription}, ${c.hairDescription}, wearing ${c.clothingDescription}).`;
-      })
+      .map((c) => `LOCKED CHARACTER — ${fixedCharacterDescription(c)}. Face: ${c.faceDescription}. Eyes: ${c.eyeDescription}.`)
       .join(' ');
 
     const positivePrompt = [
@@ -138,8 +152,9 @@ export class PromptCompiler {
       `Action: ${shotDesc}. Emotional mood: ${scene.mood}.`,
       `Environment: ${scene.location} in ${scene.environment} during ${scene.timeOfDay}.`,
       `Atmosphere and Lighting: ${scene.lighting}, with ${styleBible.lightingStyle}.`,
-      `Cinematography: Filmed as a ${scene.shotType.toLowerCase()} shot with a ${styleBible.lensStyle} cinema lens, ${styleBible.depthOfFieldStyle}, ${scene.cameraAngle.toLowerCase()} perspective.`,
-      `Art Direction: ${styleBible.renderStyle}, rich Indian textile textures, authentic cultural ambiance, subtle subsurface scattering on skin.`,
+      `Cinematography: ${humanize(scene.shotType, 'medium')} shot, ${humanize(scene.cameraAngle)} perspective, ${selectLens(scene.shotType)}, ${styleBible.depthOfFieldStyle}. ${scene.cameraMovement ? `Compose for a later ${humanize(scene.cameraMovement)} move.` : ''}`,
+      `Art direction: ${styleBible.renderStyle}. ${styleBible.materialStyle}. ${styleBible.colorLanguage}.`,
+      `Continuity contract: exactly ${characters.length || 1} named subject${characters.length === 1 ? '' : 's'}; preserve approved identity, anatomy, relative scale, colors, markings, clothing, accessories, and side placement. Maintain clear silhouettes, believable ground contact, consistent eyelines, and readable action. One 16:9 production frame only; no text or layout panels.`,
     ]
       .filter(Boolean)
     .join(' ');
@@ -147,7 +162,8 @@ export class PromptCompiler {
     const negativePrompt = [
       styleBible.negativePrompt,
       ...characters.map((c) => c.negativeConsistencyPrompt),
-    ].join(', ');
+      'duplicate character, wrong character count, identity drift, age change, species change, costume redesign, mirrored accessory, extra limbs, extra paws, fused bodies, floating feet, broken ground contact, mismatched eyeline, cropped ears, cropped shell, text, subtitle, caption, logo, watermark, border, contact sheet, split screen',
+    ].filter(Boolean).join(', ');
 
     return {
       provider: 'GEMINI',
@@ -173,9 +189,7 @@ export class PromptCompiler {
     const shotDesc = shot?.description || scene.summary;
 
     const charBlocks = characters
-      .map((c) => {
-        return `${c.name} is a stylized 3D animated ${c.ageDescription} with ${c.skinDescription}, ${c.eyeDescription}, and ${c.hairDescription}. Dressed in ${c.clothingDescription}.`;
-      })
+      .map((c) => `LOCKED CHARACTER: ${fixedCharacterDescription(c)}. ${c.faceDescription}. ${c.eyeDescription}.`)
       .join(' ');
 
     const positivePrompt = `A production keyframe from a high-budget stylized 3D animated feature film set in India.
@@ -183,10 +197,15 @@ ${charBlocks}
 Current Shot: ${shotDesc}
 The scene takes place at ${scene.location} surrounded by ${scene.environment} during ${scene.timeOfDay}.
 Lighting and Color: ${scene.lighting}. ${styleBible.colorLanguage}. Warm atmospheric glow with soft volumetric light.
-Camera Setup: ${scene.shotType.toLowerCase()} view framed at ${scene.cameraAngle.toLowerCase()} with a ${styleBible.lensStyle} lens. Soft background blur with creamy cinematic depth of field.
-Aesthetic: Stylized 3D CGI with soft subsurface scattering on skin, detailed fabric weave on clothing, physically plausible clay and brass textures. Rich, emotional, cinematic storytelling.`;
+Camera Setup: ${humanize(scene.shotType, 'medium')} view framed at ${humanize(scene.cameraAngle)} with a ${selectLens(scene.shotType)}. ${styleBible.depthOfFieldStyle}.
+Aesthetic: ${styleBible.renderStyle}. ${styleBible.materialStyle}. ${styleBible.colorLanguage}.
+Continuity contract: exactly ${characters.length || 1} named subject${characters.length === 1 ? '' : 's'} with the same approved identity, species, proportions, markings, clothing and accessories. Clear silhouettes, grounded feet, consistent eyelines, no text, no contact sheet.`;
 
-    const negativePrompt = styleBible.negativePrompt;
+    const negativePrompt = [
+      styleBible.negativePrompt,
+      ...characters.map((c) => c.negativeConsistencyPrompt),
+      'duplicate character, wrong character count, identity drift, costume redesign, extra limbs, fused bodies, floating feet, text, subtitle, logo, watermark, border',
+    ].filter(Boolean).join(', ');
 
     return {
       provider: 'OPENAI',
@@ -232,24 +251,24 @@ Aesthetic: Stylized 3D CGI with soft subsurface scattering on skin, detailed fab
     const presetGuidance = {
       STATIC_PLUS: 'Extremely subtle living stillness: gentle breathing motion, tiny eye blinks, quiet ambient leaf rustling.',
       VERY_SUBTLE: 'Slow, restrained emotional performance: subtle head turn, gentle shift in gaze, micro-expressions.',
-      NATURAL: 'Natural human motion: deliberate gestures, organic body weight shift, natural breathing cadence and eyelid movements.',
+      NATURAL: 'Natural character motion: deliberate gestures, organic body weight shift, natural breathing cadence and eyelid movements.',
       MODERATE: 'Clear continuous movement: walking, turning around, handling props with natural weight and inertia.',
       DYNAMIC: 'Energetic cinematic motion: swift physical reactions, brisk walking, sudden turn towards light.',
     }[motionPreset];
 
     const motionPrompt = [
       // 1. Primary Subject Motion
-      `${charNames || 'The subject'} moves with natural, restrained cinematic animation. ${shotDesc}.`,
+      `${charNames || 'The subject'} ${characters.length === 1 ? 'moves' : 'move'} with natural, restrained cinematic animation. ${shotDesc}.`,
       // 2. Facial & Emotional Micro-Motion
       `Subtle facial expression shift reflecting ${scene.mood.toLowerCase()}: gentle eye movements, natural blinks, quiet breathing cycles.`,
       // 3. Secondary Animation (Hair, Fabric, Environment)
-      `Subtle secondary movement in cloth folds and hair responding to gentle ambient air. Environmental motion: ${scene.ambiencePrompt || 'soft atmospheric breeze'}.`,
+      `Subtle secondary movement in cloth folds when present; fur responds gently, shell remains rigid, and leaves and grass move in a soft atmospheric breeze.`,
       // 4. Camera Trajectory
       `Camera movement: ${cameraMovement}. Controlled, smooth, steady cinematic trajectory.`,
       // 5. Preset pacing
       presetGuidance,
       // 6. Identity & Continuity Lock
-      `CRITICAL: Preserve exact character facial structure, skin tone, hair, and clothing from the reference image. No body distortion.`,
+      `CRITICAL: Preserve exact character facial structure and the approved identity, species, fur or skin color, shell markings, body proportions, relative scale, clothing, and accessories. Keep anatomy stable from first frame to last. No unrequested speech or mouth movement.`,
     ]
       .filter(Boolean)
       .join(' ');
@@ -267,6 +286,13 @@ Aesthetic: Stylized 3D CGI with soft subsurface scattering on skin, detailed fab
       'flickering frames',
       'floating artifacts',
       'character distortion',
+      'shell deformation',
+      'fur color shift',
+      'accessory swap',
+      'unmotivated lip movement',
+      'sliding feet',
+      'broken ground contact',
+      'speed ramp',
     ].join(', ');
 
     return {

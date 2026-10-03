@@ -39,6 +39,7 @@ export function SoundDesignStudio({ projectId, project, onRefresh }: SoundDesign
 
   // Lip Sync State
   const [lipSyncingSceneId, setLipSyncingSceneId] = useState<string | null>(null);
+  const [isSyncingAll, setIsSyncingAll] = useState<boolean>(false);
 
   // Handle Subtitle Generation
   const handleGenerateSubtitles = async () => {
@@ -108,6 +109,74 @@ export function SoundDesignStudio({ projectId, project, onRefresh }: SoundDesign
     } finally {
       setLipSyncingSceneId(null);
     }
+  };
+
+  const handleRunLipSyncAll = async () => {
+    const eligibleScenes = project?.scenes?.filter((scene: any) => {
+      const hasVideo = scene.assetVersions?.some((a: any) => a.assetType === 'VIDEO');
+      const hasAudio = scene.assetVersions?.some(
+        (a: any) => a.assetType === 'DIALOGUE' || a.assetType === 'NARRATION'
+      );
+      const hasLipSync = scene.assetVersions?.some((a: any) => a.assetType === 'LIPSYNC');
+      return hasVideo && hasAudio && !hasLipSync;
+    }) || [];
+
+    if (eligibleScenes.length === 0) {
+      alert('No eligible scenes found for lip sync (requires video + audio, and not already synced).');
+      return;
+    }
+
+    const confirm = window.confirm(`This will queue lip sync for ${eligibleScenes.length} scene(s). Continue?`);
+    if (!confirm) return;
+
+    setIsSyncingAll(true);
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const scene of eligibleScenes) {
+      setLipSyncingSceneId(scene.id);
+
+      const videoAsset = scene.assetVersions?.find(
+        (a: any) => a.isActive && a.assetType === 'VIDEO'
+      ) || scene.assetVersions?.find((a: any) => a.assetType === 'VIDEO');
+
+      const audioAsset = scene.assetVersions?.find(
+        (a: any) => a.isActive && (a.assetType === 'DIALOGUE' || a.assetType === 'NARRATION')
+      ) || scene.assetVersions?.find(
+        (a: any) => a.assetType === 'DIALOGUE' || a.assetType === 'NARRATION'
+      );
+
+      try {
+        const res = await fetch(`/api/projects/${projectId}/lipsync/generate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sceneId: scene.id,
+            videoAssetId: videoAsset.id,
+            audioAssetId: audioAsset.id,
+            provider: 'SYNCLABS',
+            modelId: 'sync-1.6.0',
+          }),
+        });
+
+        const data = await res.json();
+        if (data.success) {
+          successCount++;
+        } else {
+          console.error('Lip sync failed for scene', scene.id, data.error);
+          failCount++;
+        }
+      } catch (e: any) {
+        console.error('Lip sync error for scene', scene.id, e.message);
+        failCount++;
+      }
+    }
+
+    setLipSyncingSceneId(null);
+    setIsSyncingAll(false);
+
+    alert(`Batch Lip Sync complete! Success: ${successCount}, Failed: ${failCount}`);
+    if (onRefresh && successCount > 0) onRefresh();
   };
 
   return (
@@ -245,13 +314,34 @@ export function SoundDesignStudio({ projectId, project, onRefresh }: SoundDesign
 
       {/* SECTION 2: LIP SYNC CONSOLE */}
       <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-5 space-y-4">
-        <h3 className="text-sm font-bold text-white flex items-center gap-2">
-          <Film className="w-4 h-4 text-cyan-400" />
-          Scene Lip Sync (SyncLabs)
-        </h3>
-        <p className="text-xs text-slate-400">
-          Synchronize animated character facial videos with generated Hindi dialogue audio.
-        </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-bold text-white flex items-center gap-2">
+              <Film className="w-4 h-4 text-cyan-400" />
+              Scene Lip Sync (SyncLabs)
+            </h3>
+            <p className="text-xs text-slate-400">
+              Synchronize animated character facial videos with generated Hindi dialogue audio.
+            </p>
+          </div>
+          <button
+            onClick={handleRunLipSyncAll}
+            disabled={isSyncingAll}
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold bg-indigo-500 text-white hover:bg-indigo-400 transition-colors disabled:opacity-50 shrink-0"
+          >
+            {isSyncingAll ? (
+              <>
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                Syncing All...
+              </>
+            ) : (
+              <>
+                <Sparkles className="w-3.5 h-3.5" />
+                Lip Sync All
+              </>
+            )}
+          </button>
+        </div>
 
         <div className="divide-y divide-slate-800/80">
           {project?.scenes?.map((scene: any) => {
@@ -284,7 +374,7 @@ export function SoundDesignStudio({ projectId, project, onRefresh }: SoundDesign
                 <div className="flex items-center gap-2 shrink-0">
                   <button
                     onClick={() => handleRunLipSync(scene)}
-                    disabled={!hasVideo || !hasAudio || isSyncing}
+                    disabled={!hasVideo || !hasAudio || isSyncing || isSyncingAll}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-cyan-500 text-slate-950 hover:bg-cyan-400 transition-colors disabled:opacity-40"
                   >
                     {isSyncing ? (

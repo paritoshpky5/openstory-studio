@@ -71,6 +71,7 @@ export function VideoAnimationStudio({ projectId, project, onRefresh }: VideoAni
   const [cameraMove, setCameraMove] = useState<string>('SLOW_DOLLY_IN');
   const [motionPreset, setMotionPreset] = useState<string>('NATURAL');
   const [duration, setDuration] = useState<number>(5);
+  const [selectedShotId, setSelectedShotId] = useState<string>('');
 
   // Job & Polling states
   const [activeJobs, setActiveJobs] = useState<Record<string, any>>({});
@@ -87,42 +88,49 @@ export function VideoAnimationStudio({ projectId, project, onRefresh }: VideoAni
     let generatedCount = 0;
     try {
       for (const scene of project.scenes || []) {
-        const hasActiveVideo = scene.assetVersions?.some((a: any) => a.assetType === 'VIDEO' && a.isActive);
-        if (hasActiveVideo) continue;
-
-        // Find approved image for reference
+        const plannedSceneShots = scene.shots?.length
+          ? [...scene.shots].sort((a: any, b: any) => a.shotNumber - b.shotNumber)
+          : [null];
         const approvedImage = scene.assetVersions?.find((a: any) => a.assetType === 'PRODUCTION_IMAGE' && a.approvalStatus === 'APPROVED' && a.isActive);
-        if (!approvedImage) continue; // Skip if no approved image
+        if (!approvedImage) continue;
 
         const modelMeta = AVAILABLE_VIDEO_MODELS.find((m) => m.id === selectedModel);
-        const res = await fetch(`/api/projects/${projectId}/video/generate`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            sceneId: scene.id,
-            imageAssetId: approvedImage.id,
-            provider: modelMeta?.provider || 'KLING',
-            modelId: selectedModel,
-            motionPrompt: scene.summary || undefined,
-            cameraMovement: scene.cameraMovement || 'SLOW_DOLLY_IN',
-            motionPreset: scene.motionPreset || 'NATURAL',
-            durationSeconds: 5,
-            forceRegeneration: false,
-          }),
-        });
+        for (const shot of plannedSceneShots) {
+          const hasActiveVideo = scene.assetVersions?.some((asset: any) =>
+            asset.assetType === 'VIDEO' && asset.isActive && (shot ? asset.shotId === shot.id : !asset.shotId)
+          );
+          if (hasActiveVideo) continue;
 
-        if (!res.ok) {
-          const errText = await res.text();
-          let errMsg = errText;
-          try {
-            const errJson = JSON.parse(errText);
-            errMsg = errJson.error || errText;
-          } catch {}
-          throw new Error(`Scene #${scene.sceneNumber} failed: ${errMsg}`);
+          const res = await fetch(`/api/projects/${projectId}/video/generate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              sceneId: scene.id,
+              shotId: shot?.id,
+              imageAssetId: approvedImage.id,
+              provider: modelMeta?.provider || 'KLING',
+              modelId: selectedModel,
+              motionPrompt: shot?.description || scene.summary || undefined,
+              cameraMovement: scene.cameraMovement || 'SLOW_DOLLY_IN',
+              motionPreset: scene.motionPreset || 'NATURAL',
+              durationSeconds: Math.min(8, Math.max(3, Math.round(shot?.duration || scene.durationSeconds || 5))),
+              forceRegeneration: false,
+            }),
+          });
+
+          if (!res.ok) {
+            const errText = await res.text();
+            let errMsg = errText;
+            try {
+              const errJson = JSON.parse(errText);
+              errMsg = errJson.error || errText;
+            } catch {}
+            throw new Error(`Scene #${scene.sceneNumber}, shot ${shot?.shotNumber || 1} failed: ${errMsg}`);
+          }
+
+          const data = await res.json();
+          if (data.success) generatedCount++;
         }
-
-        const data = await res.json();
-        if (data.success) generatedCount++;
       }
 
       if (generatedCount > 0) {
@@ -139,6 +147,25 @@ export function VideoAnimationStudio({ projectId, project, onRefresh }: VideoAni
   };
 
   const selectedScene = project?.scenes?.find((s: any) => s.id === selectedSceneId);
+  const plannedShots = selectedScene?.shots?.length
+    ? [...selectedScene.shots].sort((a: any, b: any) => a.shotNumber - b.shotNumber)
+    : [];
+  const selectedShot = plannedShots.find((shot: any) => shot.id === selectedShotId) || plannedShots[0];
+  const activeSpeech = selectedScene?.assetVersions?.find(
+    (asset: any) => asset.isActive && (asset.assetType === 'NARRATION' || asset.assetType === 'DIALOGUE')
+  );
+
+  useEffect(() => {
+    const firstShot = project?.scenes?.find((scene: any) => scene.id === selectedSceneId)?.shots
+      ?.slice()
+      .sort((a: any, b: any) => a.shotNumber - b.shotNumber)?.[0];
+    setSelectedShotId(firstShot?.id || '');
+  }, [selectedSceneId, project]);
+
+  useEffect(() => {
+    const seconds = selectedShot?.duration || activeSpeech?.duration || selectedScene?.durationSeconds || 5;
+    setDuration(Math.min(8, Math.max(3, Math.round(seconds))));
+  }, [selectedShot?.id, selectedShot?.duration, activeSpeech?.duration, selectedScene?.durationSeconds]);
 
   const handleCopyMotionPrompt = () => {
     if (!selectedScene) return;
@@ -157,6 +184,7 @@ export function VideoAnimationStudio({ projectId, project, onRefresh }: VideoAni
       const formData = new FormData();
       formData.append('file', file);
       formData.append('sceneId', selectedScene.id);
+      if (selectedShot?.id) formData.append('shotId', selectedShot.id);
       formData.append('assetType', 'VIDEO');
       formData.append('prompt', `Imported ${file.name} from free web video generation`);
 
@@ -181,14 +209,18 @@ export function VideoAnimationStudio({ projectId, project, onRefresh }: VideoAni
 
   // Find the anchor frame for this scene
   const approvedAnchorFrame = selectedScene?.assetVersions?.find(
-    (a: any) => a.isActive && (a.assetType === 'PRODUCTION_IMAGE' || a.assetType === 'STORYBOARD')
+    (a: any) => a.isActive && a.shotId === selectedShot?.id && (a.assetType === 'PRODUCTION_IMAGE' || a.assetType === 'STORYBOARD')
+  ) || selectedScene?.assetVersions?.find(
+    (a: any) => a.isActive && !a.shotId && (a.assetType === 'PRODUCTION_IMAGE' || a.assetType === 'STORYBOARD')
   ) || selectedScene?.assetVersions?.find(
     (a: any) => a.approvalStatus === 'APPROVED' && (a.assetType === 'PRODUCTION_IMAGE' || a.assetType === 'STORYBOARD')
   );
 
   // Find generated video versions for this scene
   const videoVersions = selectedScene?.assetVersions?.filter(
-    (a: any) => a.assetType === 'VIDEO'
+    (a: any) => a.assetType === 'VIDEO' && (
+      a.shotId === selectedShot?.id || (plannedShots.length <= 1 && !a.shotId)
+    )
   ) || [];
 
   // Poll active jobs
@@ -242,6 +274,7 @@ export function VideoAnimationStudio({ projectId, project, onRefresh }: VideoAni
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           sceneId: selectedScene.id,
+          shotId: selectedShot?.id,
           imageAssetId: approvedAnchorFrame.id,
           provider: modelMeta?.provider || 'KLING',
           modelId: selectedModel,
@@ -335,6 +368,35 @@ export function VideoAnimationStudio({ projectId, project, onRefresh }: VideoAni
           })}
         </div>
       </div>
+
+      {selectedScene && (
+        <div className="rounded-lg border border-cyan-500/20 bg-cyan-950/20 p-3 space-y-2">
+          <div className="flex flex-wrap items-center gap-2 text-[11px]">
+            <Clock className="w-3.5 h-3.5 text-cyan-400" />
+            <span className="font-semibold text-cyan-200">Audio-driven coverage</span>
+            <span className="text-slate-400">
+              {activeSpeech?.duration ? `${activeSpeech.duration.toFixed(1)}s measured speech` : 'voice required before generation'}
+              {' · '}{plannedShots.length || 1} planned shot{plannedShots.length === 1 ? '' : 's'}
+            </span>
+          </div>
+          {plannedShots.length > 0 && (
+            <div className="flex gap-1.5 overflow-x-auto pb-1">
+              {plannedShots.map((shot: any) => (
+                <button
+                  key={shot.id}
+                  onClick={() => setSelectedShotId(shot.id)}
+                  title={shot.description}
+                  className={`shrink-0 rounded px-2.5 py-1 text-[10px] font-semibold border ${selectedShot?.id === shot.id
+                    ? 'border-cyan-400/50 bg-cyan-500/20 text-cyan-200'
+                    : 'border-slate-700 bg-slate-900 text-slate-400 hover:text-white'}`}
+                >
+                  Shot {shot.shotNumber} · {shot.duration.toFixed(1)}s
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {selectedScene && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -623,7 +685,7 @@ export function VideoAnimationStudio({ projectId, project, onRefresh }: VideoAni
                   Generated Video Takes ({videoVersions.length})
                 </h3>
                 <span className="text-[10px] font-mono text-slate-500">
-                  Shot #{selectedScene.sceneNumber}
+                  Scene {selectedScene.sceneNumber} · Shot {selectedShot?.shotNumber || 1}
                 </span>
               </div>
 
